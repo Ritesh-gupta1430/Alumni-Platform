@@ -1,0 +1,25 @@
+{
+  "name": "alumnetra-platform",
+  "version": "1.0.0",
+  "description": "AlumNetra - Institutional Alumni Engagement & Smart Management Platform for TCET Mumbai",
+  "scripts": {
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "dev:ai": "cd ai_service && uvicorn main:app --reload --port 8000",
+    "seed": "node server/utils/seed.js",
+    "build": "npm --prefix client run build"
+  },
+  "keywords": [
+    "alumnetra",
+    "tcet",
+    "alumni-management",
+    "fastapi",
+    "scikit-learn",
+    "mern",
+    "react",
+    "vite",
+    "tailwind"
+  ],
+  "author": "AlumNetra Institutional Engineering Team",
+  "license": "MIT"
+}
