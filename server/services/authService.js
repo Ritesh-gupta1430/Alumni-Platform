@@ -25,13 +25,13 @@ async function comparePassword(password, hash) {
 
 function generateAccessToken(payload) {
   return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, {
-    expiresIn: process.env.JWT_ACCESS_EXPIRY || '15m',
+    expiresIn: process.env.JWT_ACCESS_EXPIRY || '7d',
   });
 }
 
 function generateRefreshToken(payload) {
   return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRY || '7d',
+    expiresIn: process.env.JWT_REFRESH_EXPIRY || '30d',
   });
 }
 
@@ -81,7 +81,7 @@ async function createSession(userId, { ipAddress, userAgent, deviceInfo } = {}) 
   const refreshToken = generateRefreshToken({ userId: user._id });
 
   const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
+  expiresAt.setDate(expiresAt.getDate() + 30);
 
   // Store refresh token in user document
   user.refreshTokens.push({

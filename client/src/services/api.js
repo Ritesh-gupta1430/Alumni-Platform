@@ -46,8 +46,10 @@ api.interceptors.response.use(
 
     if (
       error.response?.status === 401 &&
-      error.response?.data?.code === 'TOKEN_EXPIRED' &&
-      !originalRequest._retry
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/auth/login') &&
+      !originalRequest.url?.includes('/auth/refresh') &&
+      !originalRequest.url?.includes('/auth/register')
     ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -63,16 +65,20 @@ api.interceptors.response.use(
 
       try {
         const { data } = await api.post('/auth/refresh');
-        const newToken = data.data.accessToken;
-        localStorage.setItem('accessToken', newToken);
-        api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
-        processQueue(null, newToken);
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        return api(originalRequest);
+        const newToken = data?.data?.accessToken;
+        if (newToken) {
+          localStorage.setItem('accessToken', newToken);
+          api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
+          processQueue(null, newToken);
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return api(originalRequest);
+        }
       } catch (refreshError) {
         processQueue(refreshError, null);
         localStorage.removeItem('accessToken');
-        window.location.href = '/login?expired=1';
+        if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register')) {
+          window.location.href = '/login?expired=1';
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
