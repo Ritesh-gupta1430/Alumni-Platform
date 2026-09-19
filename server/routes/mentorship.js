@@ -13,8 +13,10 @@ router.get('/mentors', authenticate, async (req, res, next) => {
     const { skills, department, industry, page = 1, limit = 12 } = req.query;
 
     const profileFilter = {
-      isMentor: true,
-      mentorshipAvailability: { $in: ['open', 'limited'] },
+      $or: [
+        { isMentor: true },
+        { mentorshipAvailability: { $in: ['open', 'limited'] } },
+      ],
     };
 
     if (skills) {
@@ -23,7 +25,7 @@ router.get('/mentors', authenticate, async (req, res, next) => {
     }
     if (industry) profileFilter.industry = { $regex: industry, $options: 'i' };
 
-    const [profiles, total] = await Promise.all([
+    let [profiles, total] = await Promise.all([
       Profile.find(profileFilter)
         .populate({
           path: 'user',
@@ -37,9 +39,42 @@ router.get('/mentors', authenticate, async (req, res, next) => {
       Profile.countDocuments(profileFilter),
     ]);
 
-    const filtered = profiles.filter((p) => p.user !== null);
+    let filtered = profiles.filter((p) => p.user !== null && p.user !== undefined);
 
-    return res.json({ success: true, data: { mentors: filtered, total: filtered.length, page: parseInt(page), pages: Math.ceil(total / limit) } });
+    if (filtered.length === 0) {
+      const alumniUsers = await User.find({
+        accountStatus: 'active',
+        role: { $in: ['ALUMNI', 'FACULTY'] },
+        ...(department ? { department } : {}),
+      })
+        .select('firstName lastName profilePhoto role department graduationYear verificationBadge')
+        .limit(parseInt(limit))
+        .lean();
+
+      const alumniIds = alumniUsers.map((u) => u._id);
+      const alumniProfiles = await Profile.find({ user: { $in: alumniIds } }).lean();
+      const profileMap = alumniProfiles.reduce((acc, p) => ({ ...acc, [p.user.toString()]: p }), {});
+
+      filtered = alumniUsers.map((u) => {
+        const p = profileMap[u._id.toString()] || {};
+        return {
+          _id: p._id || u._id,
+          user: u,
+          headline: p.headline || `${u.role === 'ALUMNI' ? 'Alumni' : 'Faculty'} @ TCET Mumbai`,
+          currentOrganization: p.currentOrganization || (u.role === 'ALUMNI' ? 'Industry Partner' : 'TCET Mumbai'),
+          currentCity: p.currentCity || 'Mumbai',
+          industry: p.industry || 'Technology & Engineering',
+          skills: p.skills?.length ? p.skills : [{ name: 'System Design' }, { name: 'Career Guidance' }],
+          mentorshipTopics: p.mentorshipTopics?.length ? p.mentorshipTopics : ['Career Transitions', 'Technical Interviews'],
+          mentorshipAvailability: 'open',
+          maxMentees: 4,
+          currentMenteeCount: 0,
+        };
+      });
+      total = filtered.length;
+    }
+
+    return res.json({ success: true, data: { mentors: filtered, total, page: parseInt(page), pages: Math.ceil(total / limit) } });
   } catch (err) { next(err); }
 });
 

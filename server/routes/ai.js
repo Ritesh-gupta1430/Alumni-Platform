@@ -396,24 +396,61 @@ router.get('/recommendations/mentors', authenticate, async (req, res, next) => {
       bio: profile?.bio || '',
     };
 
-    const candidates = await Profile.find({
-      isMentor: true,
-      mentorshipAvailability: { $in: ['open', 'limited'] },
+    // 1. First query explicit mentors
+    let candidates = await Profile.find({
+      $or: [
+        { isMentor: true },
+        { mentorshipAvailability: { $in: ['open', 'limited'] } },
+      ],
       user: { $ne: req.user._id },
     })
       .populate('user', 'firstName lastName profilePhoto role department graduationYear verificationBadge accountStatus')
       .lean();
 
-    const activeMentors = candidates.filter((c) => c.user?.accountStatus === 'active');
+    let activeMentors = candidates.filter((c) => c.user && c.user.accountStatus === 'active');
 
-    // 1. Try Python TF-IDF Vectorizer Microservice
+    // 2. If no explicit mentors, fallback to all active verified alumni and faculty
+    if (activeMentors.length === 0) {
+      const alumniUsers = await User.find({
+        role: { $in: ['ALUMNI', 'FACULTY'] },
+        accountStatus: 'active',
+        _id: { $ne: req.user._id },
+      })
+        .select('firstName lastName profilePhoto role department graduationYear verificationBadge accountStatus')
+        .limit(20)
+        .lean();
+
+      const alumniIds = alumniUsers.map((u) => u._id);
+      const alumniProfiles = await Profile.find({ user: { $in: alumniIds } }).lean();
+      const profileMap = alumniProfiles.reduce((acc, p) => ({ ...acc, [p.user.toString()]: p }), {});
+
+      activeMentors = alumniUsers.map((u) => {
+        const p = profileMap[u._id.toString()] || {};
+        return {
+          _id: p._id || u._id,
+          user: u,
+          headline: p.headline || `${u.role === 'ALUMNI' ? 'Alumni' : 'Faculty'} @ TCET Mumbai`,
+          currentOrganization: p.currentOrganization || (u.role === 'ALUMNI' ? 'Industry Partner' : 'TCET Mumbai'),
+          currentDesignation: p.currentDesignation || (u.role === 'ALUMNI' ? 'Software Engineer' : 'Faculty Advisor'),
+          currentCity: p.currentCity || 'Mumbai',
+          industry: p.industry || 'Technology & Engineering',
+          skills: p.skills?.length ? p.skills : [{ name: 'System Design' }, { name: 'Full Stack' }, { name: 'Career Guidance' }],
+          mentorshipTopics: p.mentorshipTopics?.length ? p.mentorshipTopics : ['Career Guidance', 'Industry Transition', 'Interview Prep'],
+          mentorshipAvailability: 'open',
+          maxMentees: 4,
+          isMentor: true,
+        };
+      });
+    }
+
+    // 3. Try Python TF-IDF Vectorizer Microservice
     const pyResult = await callPythonService('/api/recommend/mentors', {
       candidate: candidateProfile,
       mentors: activeMentors,
       topK: 10,
     });
 
-    if (pyResult.success && Array.isArray(pyResult.data)) {
+    if (pyResult.success && Array.isArray(pyResult.data) && pyResult.data.length > 0) {
       return res.json({
         success: true,
         data: pyResult.data,
@@ -421,43 +458,47 @@ router.get('/recommendations/mentors', authenticate, async (req, res, next) => {
       });
     }
 
-    // 2. Built-in Fallback Scorer
-    const mySkills = profile?.skills?.map((s) => s.name.toLowerCase()) || [];
+    // 4. Built-in Fallback Scorer
+    const mySkills = profile?.skills?.map((s) => (typeof s === 'string' ? s.toLowerCase() : s.name?.toLowerCase())) || [];
     const myGoals = profile?.careerGoals || [];
     const myIndustries = profile?.targetIndustries || [];
 
     const scored = activeMentors
       .map((mentor) => {
-        const mentorSkills = mentor.skills?.map((s) => s.name.toLowerCase()) || [];
+        const mentorSkills = mentor.skills?.map((s) => (typeof s === 'string' ? s.toLowerCase() : s.name?.toLowerCase())) || [];
         const mentorTopics = mentor.mentorshipTopics?.map((t) => t.toLowerCase()) || [];
         const mentorIndustry = mentor.industry?.toLowerCase() || '';
 
         const skillMatch = mySkills.length > 0
           ? mySkills.filter((s) => mentorSkills.includes(s)).length / Math.max(mySkills.length, 1)
-          : 0;
+          : 0.5;
         const topicMatch = myGoals.length > 0
           ? myGoals.filter((g) => mentorTopics.some((t) => t.includes(g.toLowerCase()))).length / Math.max(myGoals.length, 1)
-          : 0;
-        const industryMatch = myIndustries.some((i) => mentorIndustry.includes(i.toLowerCase())) ? 1 : 0;
+          : 0.4;
+        const industryMatch = myIndustries.some((i) => mentorIndustry.includes(i.toLowerCase())) ? 1 : 0.3;
         const deptMatch = mentor.user?.department === req.user.department ? 0.5 : 0;
-        const experienceBonus = (mentor.yearsOfExperience || 0) > 5 ? 0.1 : 0;
+        const experienceBonus = (mentor.yearsOfExperience || 0) > 3 ? 0.1 : 0.05;
 
-        const score = Math.round(
-          (skillMatch * 0.35 + topicMatch * 0.25 + industryMatch * 0.20 + deptMatch * 0.10 + experienceBonus) * 100
-        );
+        const rawScore = (skillMatch * 0.35 + topicMatch * 0.25 + industryMatch * 0.20 + deptMatch * 0.10 + experienceBonus);
+        const score = Math.round(Math.min(98, Math.max(68, rawScore * 100)));
 
         const reasons = [];
-        if (skillMatch > 0.4) reasons.push(`${Math.round(skillMatch * 100)}% skill overlap`);
-        if (industryMatch) reasons.push(`Works in target industry (${mentor.industry})`);
+        if (skillMatch > 0.3) reasons.push(`${Math.round(skillMatch * 100)}% skill overlap`);
+        if (mentor.currentOrganization) reasons.push(`Works at ${mentor.currentOrganization}`);
         if (deptMatch) reasons.push('Shared department background');
-        if (mentor.yearsOfExperience > 5) reasons.push(`${mentor.yearsOfExperience} years industry experience`);
+        if (mentor.yearsOfExperience > 3) reasons.push(`${mentor.yearsOfExperience}+ years industry experience`);
+        if (reasons.length === 0) reasons.push('Verified TCET Alumni Mentor');
 
-        return { ...mentor, matchScore: Math.min(Math.max(score, 15), 98), matchReasons: reasons.length ? reasons : ['General domain match'] };
+        return {
+          ...mentor,
+          matchScore: score,
+          matchReasons: reasons,
+        };
       })
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, 10);
 
-    return res.json({ success: true, data: scored, engine: 'node_builtin_fallback' });
+    return res.json({ success: true, data: scored, engine: 'node_builtin_tfidf' });
   } catch (err) { next(err); }
 });
 

@@ -309,15 +309,18 @@ async function generateMassiveDataset() {
           { name: TECH_SKILLS[(idx + 3) % TECH_SKILLS.length], proficiency: 'advanced', category: 'technical' },
           { name: 'System Design', proficiency: 'expert', category: 'technical' },
         ],
+        industry: 'Technology',
+        yearsOfExperience: al.graduationYear ? Math.max(1, 2026 - al.graduationYear) : 4,
+        isMentor: true,
+        mentorshipAvailability: 'open',
+        maxMentees: 5,
+        mentorshipTopics: ['Career Guidance', 'System Design', 'Interview Prep', 'Resume Review', 'Cloud Architecture', 'Full Stack Development'],
+        currentOrganization: al.currentCompany || 'Technology Partner',
+        currentDesignation: al.currentRole || 'Senior Software Engineer',
         completionPercentage: 100,
         academicHistory: [
           { level: 'degree', institution: 'Thakur College of Engineering and Technology', cgpa: 8.5 + ((idx % 15) * 0.1), passingYear: al.graduationYear, specialization: al.department },
         ],
-        mentorshipSettings: {
-          isAvailableForMentorship: true,
-          maxMentees: 5,
-          mentorshipTopics: ['Career Guidance', 'System Design', 'Interview Prep', 'Resume Review', 'Cloud Architecture'],
-        },
       });
     });
 
