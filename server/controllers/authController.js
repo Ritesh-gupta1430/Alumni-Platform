@@ -109,7 +109,6 @@ async function register(req, res, next) {
         lastName: user.lastName,
         role: user.role,
         accountStatus: user.accountStatus,
-        devOtp: process.env.NODE_ENV !== 'production' ? otp : undefined,
       },
     });
   } catch (err) {
@@ -204,9 +203,6 @@ async function resendOTP(req, res, next) {
     return res.json({
       success: true,
       message: 'A new OTP has been sent to your email.',
-      data: {
-        devOtp: process.env.NODE_ENV !== 'production' ? otp : undefined,
-      },
     });
   } catch (err) {
     next(err);
@@ -393,9 +389,6 @@ async function forgotPassword(req, res, next) {
     return res.json({
       success: true,
       message: 'If an account exists, a reset OTP has been sent.',
-      data: {
-        devOtp: process.env.NODE_ENV !== 'production' ? otp : undefined,
-      },
     });
   } catch (err) {
     next(err);

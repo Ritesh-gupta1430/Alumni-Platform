@@ -29,20 +29,10 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  const [devOtp, setDevOtp] = useState(state?.devOtp || null);
 
-  const { register, handleSubmit, setValue, formState: { errors } } = useForm({
+  const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: {
-      otp: state?.devOtp || '',
-    },
   });
-
-  useEffect(() => {
-    if (state?.devOtp) {
-      setValue('otp', state.devOtp);
-    }
-  }, [state?.devOtp, setValue]);
 
   useEffect(() => {
     if (countdown > 0) {
@@ -79,12 +69,8 @@ export default function ResetPasswordPage() {
     if (countdown > 0 || resending) return;
     setResending(true);
     try {
-      const res = await authAPI.forgotPassword({ email });
-      if (res?.data?.data?.devOtp) {
-        setDevOtp(res.data.data.devOtp);
-        setValue('otp', res.data.data.devOtp);
-      }
-      toast.success('A new reset OTP has been sent.', { title: 'OTP Resent' });
+      await authAPI.forgotPassword({ email });
+      toast.success('A new reset OTP has been sent to your email.', { title: 'OTP Resent' });
       setCountdown(30);
     } catch (err) {
       toast.error(getErrorMessage(err));
@@ -136,42 +122,6 @@ export default function ResetPasswordPage() {
             Enter the 6-digit code sent to <br/>
             <strong>{email}</strong>
           </p>
-
-          {devOtp && (
-            <div
-              style={{
-                background: 'rgba(99, 102, 241, 0.08)',
-                border: '1px dashed rgba(99, 102, 241, 0.35)',
-                borderRadius: 'var(--radius-md)',
-                padding: '10px 14px',
-                marginBottom: 20,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: 13,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Sparkles size={16} style={{ color: '#6366f1' }} />
-                <span>Dev OTP: <strong style={{ letterSpacing: 2, color: 'var(--color-brand-400)' }}>{devOtp}</strong></span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setValue('otp', devOtp)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--color-brand-400)',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                }}
-              >
-                Autofill
-              </button>
-            </div>
-          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <Input
