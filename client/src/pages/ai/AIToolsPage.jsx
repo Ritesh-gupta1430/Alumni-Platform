@@ -164,6 +164,30 @@ ACHIEVEMENTS & CERTIFICATIONS
 • AWS Certified Cloud Practitioner
 • Solved 350+ DSA problems on LeetCode`;
 
+  const analyzeFile = async (file) => {
+    if (!file) return;
+    setError('');
+    setLoading(true);
+    setResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('resume', file);
+
+      const res = await api.post('/ai/resume/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      if (res.data?.success) {
+        setResult(res.data.data);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to analyze resume. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleFileDrop = (e) => {
     e.preventDefault();
     const file = e.dataTransfer?.files?.[0];
@@ -173,7 +197,7 @@ ACHIEVEMENTS & CERTIFICATIONS
         return;
       }
       setSelectedFile(file);
-      setError('');
+      analyzeFile(file);
     }
   };
 
@@ -185,38 +209,29 @@ ACHIEVEMENTS & CERTIFICATIONS
         return;
       }
       setSelectedFile(file);
-      setError('');
+      analyzeFile(file);
     }
   };
 
   const handleAnalyze = async (overrideText) => {
+    if (inputMode === 'pdf' && selectedFile && !overrideText) {
+      return analyzeFile(selectedFile);
+    }
+
     setError('');
     setLoading(true);
 
     try {
-      if (inputMode === 'pdf' && selectedFile && !overrideText) {
-        const formData = new FormData();
-        formData.append('resume', selectedFile);
+      const text = overrideText || resumeText;
+      if (!text || text.trim().length < 30) {
+        setError('Please paste or load at least 30 characters of resume text.');
+        setLoading(false);
+        return;
+      }
 
-        const res = await api.post('/ai/resume/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-
-        if (res.data?.success) {
-          setResult(res.data.data);
-        }
-      } else {
-        const text = overrideText || resumeText;
-        if (!text || text.trim().length < 30) {
-          setError('Please paste or load at least 30 characters of resume text.');
-          setLoading(false);
-          return;
-        }
-
-        const res = await api.post('/ai/resume/analyze', { resumeText: text });
-        if (res.data?.success) {
-          setResult(res.data.data);
-        }
+      const res = await api.post('/ai/resume/analyze', { resumeText: text });
+      if (res.data?.success) {
+        setResult(res.data.data);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to analyze resume. Please try again.');
@@ -419,7 +434,7 @@ ACHIEVEMENTS & CERTIFICATIONS
                     {result.score >= 80 ? 'Excellent Technical Resume' : result.score >= 60 ? 'Strong Foundation with Room to Polish' : 'Needs Structural Improvement'}
                   </h3>
                   <p className="text-xs text-text-muted mt-0.5">
-                    Word count: {result.wordCount} words • {result.quantifiableImpactCount || 0} quantifiable outcomes detected
+                    Word count: {result.wordCount ?? (result.extractedText ? result.extractedText.split(/\s+/).filter(Boolean).length : 0)} words • {result.quantifiableImpactCount || 0} quantifiable outcomes detected
                   </p>
                 </div>
               </div>

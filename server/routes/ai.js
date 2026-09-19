@@ -66,14 +66,143 @@ router.get('/status', async (req, res) => {
 const multer = require('multer');
 const pdfModule = require('pdf-parse');
 
+const TECH_TAXONOMY = {
+  frontend: ['react', 'vue', 'angular', 'next.js', 'tailwind', 'css', 'html', 'javascript', 'typescript', 'redux', 'sass', 'bootstrap', 'figma'],
+  backend: ['node.js', 'express', 'django', 'fastapi', 'flask', 'spring boot', 'java', 'python', 'golang', 'c++', 'c#', '.net', 'graphql', 'rest'],
+  database: ['mongodb', 'postgresql', 'mysql', 'redis', 'firebase', 'sqlite', 'cassandra', 'dynamodb', 'elasticsearch'],
+  devops_cloud: ['docker', 'kubernetes', 'aws', 'gcp', 'azure', 'ci/cd', 'github actions', 'terraform', 'linux', 'nginx', 'jenkins'],
+  data_ai: ['pandas', 'numpy', 'scikit-learn', 'tensorflow', 'pytorch', 'keras', 'opencv', 'nlp', 'llm', 'tableau', 'power bi', 'sql'],
+};
+
+const ACTION_VERBS = [
+  'built', 'developed', 'architected', 'engineered', 'implemented', 'designed',
+  'deployed', 'optimized', 'scaled', 'spearheaded', 'accelerated', 'automated',
+  'collaborated', 'orchestrated', 'refactored', 'integrated', 'led', 'enhanced',
+  'created', 'achieved', 'delivered', 'mentored', 'maintained'
+];
+
+function analyzeResumeNLP(resumeText) {
+  if (!resumeText || resumeText.trim().length < 20) {
+    return {
+      score: 0,
+      grade: 'D',
+      wordCount: 0,
+      sectionsFound: {},
+      detectedSkills: [],
+      actionVerbDensity: 0,
+      quantifiableImpactCount: 0,
+      strengths: [],
+      suggestions: ['Resume content is too short. Please upload or paste a complete resume.'],
+      atsChecklist: [],
+    };
+  }
+
+  const text = resumeText.trim();
+  const lowerText = text.toLowerCase();
+  const words = text.split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+
+  // 1. Structural Section Detection
+  const sections = {
+    contact_info: /(@|phone|\+91|\bemail\b|linkedin\.com|github\.com)/i.test(lowerText),
+    education: /(education|b\.?tech|bachelor|degree|university|college|cgpa|gpa|tcet)/i.test(lowerText),
+    experience: /(experience|internship|work history|employment|developer at|engineer at|intern)/i.test(lowerText),
+    skills: /(skills|technical skills|technologies|tools|competencies)/i.test(lowerText),
+    projects: /(projects|academic projects|personal projects|key projects)/i.test(lowerText),
+    certifications_achievements: /(certifications?|awards?|achievements?|hackathon|publications?|honors?)/i.test(lowerText),
+    portfolio_links: /(github\.com\/[a-zA-Z0-9_\-]+|linkedin\.com\/in\/[a-zA-Z0-9_\-]+|https?:\/\/[a-zA-Z0-9.\-_/]+)/i.test(lowerText),
+  };
+
+  // 2. Extracted Tech Stack
+  const detectedSkills = [];
+  for (const [category, skillList] of Object.entries(TECH_TAXONOMY)) {
+    for (const skill of skillList) {
+      const regex = new RegExp(`\\b${skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (regex.test(text)) {
+        detectedSkills.push({ name: skill.charAt(0).toUpperCase() + skill.slice(1), category });
+      }
+    }
+  }
+
+  // 3. Action Verbs
+  const detectedVerbs = [];
+  for (const verb of ACTION_VERBS) {
+    const regex = new RegExp(`\\b${verb}\\b`, 'gi');
+    const matches = (text.match(regex) || []).length;
+    if (matches > 0) {
+      detectedVerbs.push({ verb, count: matches });
+    }
+  }
+  const totalVerbs = detectedVerbs.reduce((sum, v) => sum + v.count, 0);
+
+  // 4. Quantifiable Impact & Metrics
+  const metricMatches = text.match(/(\b\d+%\b|\b\d+\+?\s*(?:users|clients|ms|seconds|minutes|k|m|x|stars|downloads|requests)\b|\b(?:reduced|improved|increased|boosted|saved)\s+by\s+\d+%)/gi) || [];
+  const quantCount = metricMatches.length;
+
+  // 5. ATS Scoring Algorithm
+  const presentSectionsCount = Object.values(sections).filter(Boolean).length;
+  const sectionScore = (presentSectionsCount / Object.keys(sections).length) * 35;
+  const skillScore = Math.min((detectedSkills.length / 10) * 25, 25);
+  const quantScore = Math.min((quantCount / 3) * 20, 20);
+  const verbScore = Math.min((totalVerbs / 5) * 10, 10);
+
+  let lenScore = 5;
+  if (wordCount >= 200 && wordCount <= 800) lenScore = 10;
+  else if (wordCount >= 100 && wordCount <= 1200) lenScore = 7;
+
+  const totalScore = Math.min(100, Math.max(15, Math.round(sectionScore + skillScore + quantScore + verbScore + lenScore)));
+  const grade = totalScore >= 90 ? 'A+' : totalScore >= 80 ? 'A' : totalScore >= 65 ? 'B' : totalScore >= 50 ? 'C' : 'D';
+
+  const strengths = [];
+  const suggestions = [];
+
+  if (sections.skills) strengths.push('Clear Technical Skills section detected with categorized taxonomy.');
+  if (detectedSkills.length >= 5) strengths.push(`Strong technology stack breadth (${detectedSkills.length} technical skills found).`);
+  if (quantCount > 0) strengths.push(`Found ${quantCount} quantifiable metrics demonstrating measurable outcomes.`);
+  if (totalVerbs >= 3) strengths.push(`High impact delivery with ${totalVerbs} active engineering action verbs.`);
+  if (sections.portfolio_links) strengths.push('Live portfolio / GitHub / LinkedIn profile links present.');
+
+  if (quantCount === 0) suggestions.push('Include measurable outcomes with metrics (e.g. "Reduced query latency by 45%", "Scaled API to 500+ requests").');
+  if (totalVerbs < 3) suggestions.push('Begin bullet points with strong action verbs (e.g. "Architected", "Engineered", "Optimized", "Automated").');
+  if (detectedSkills.length < 5) suggestions.push('Highlight core industry skills (e.g. React, Node.js, Docker, AWS, PostgreSQL, Python).');
+  if (!sections.certifications_achievements) suggestions.push('Add an Achievements / Certifications section for hackathons, coding ranks, or credentials.');
+  if (wordCount < 150) suggestions.push('Resume length is brief. Aim for 250-600 words of technical project and internship details.');
+
+  const atsChecklist = [
+    { item: 'Contact Information', status: sections.contact_info ? 'pass' : 'fail', note: sections.contact_info ? 'Email and contact formatted' : 'Missing contact details' },
+    { item: 'Education Section', status: sections.education ? 'pass' : 'fail', note: sections.education ? 'Degree / college recognized' : 'Missing education' },
+    { item: 'Technical Skills Block', status: sections.skills ? 'pass' : 'fail', note: sections.skills ? `${detectedSkills.length} skills identified` : 'Missing skills section' },
+    { item: 'Projects & Experience', status: sections.projects || sections.experience ? 'pass' : 'fail', note: 'Project history parsed' },
+    { item: 'Quantifiable Metrics', status: quantCount >= 2 ? 'pass' : quantCount === 1 ? 'warn' : 'warn', note: `${quantCount} metrics detected` },
+    { item: 'Action Verb Density', status: totalVerbs >= 3 ? 'pass' : 'warn', note: `${totalVerbs} action verbs found` },
+    { item: 'External Profiles', status: sections.portfolio_links ? 'pass' : 'warn', note: sections.portfolio_links ? 'GitHub/LinkedIn verified' : 'Recommend adding GitHub/LinkedIn' },
+  ];
+
+  return {
+    score: totalScore,
+    grade,
+    wordCount,
+    sectionsFound: sections,
+    detectedSkills,
+    actionVerbDensity: totalVerbs,
+    quantifiableImpactCount: quantCount,
+    strengths: strengths.length ? strengths : ['Resume parsed successfully.'],
+    suggestions: suggestions.length ? suggestions : ['Keep your resume updated with your latest projects.'],
+    atsChecklist,
+  };
+}
+
 async function extractTextFromPdfBuffer(buffer) {
   try {
-    // pdf-parse v1 (function)
     if (typeof pdfModule === 'function') {
       const data = await pdfModule(buffer);
-      if (data && data.text) return data.text;
+      if (data && data.text && data.text.trim().length > 0) return data.text;
     }
-    // pdf-parse v2 (PDFParse class)
+  } catch (err) {
+    console.warn('[PDF Parser v1 error]', err.message);
+  }
+
+  try {
     if (pdfModule && pdfModule.PDFParse) {
       const parser = new pdfModule.PDFParse({ data: buffer });
       const data = await parser.getText();
@@ -85,13 +214,12 @@ async function extractTextFromPdfBuffer(buffer) {
       }
     }
   } catch (err) {
-    console.warn('[PDF Parser] Standard parser error:', err.message);
+    console.warn('[PDF Parser v2 error]', err.message);
   }
 
-  // Raw text stream fallback for readable PDF streams or text files
+  // Raw fallback for readable text streams
   try {
     const raw = buffer.toString('utf-8');
-    // Extract stream blocks or plain text if ASCII/UTF-8
     const cleaned = raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s+/g, ' ');
     if (cleaned.trim().length >= 30) {
       return cleaned;
@@ -124,7 +252,7 @@ router.post('/resume/upload', authenticate, upload.single('resume'), async (req,
 
     // 1. Try Python NLP Microservice
     const pyResult = await callPythonService('/api/resume/analyze', { resumeText: extractedText });
-    if (pyResult.success) {
+    if (pyResult.success && pyResult.data?.score !== undefined) {
       return res.json({
         success: true,
         data: {
@@ -137,34 +265,18 @@ router.post('/resume/upload', authenticate, upload.single('resume'), async (req,
       });
     }
 
-    // 2. Built-in Fallback
-    const sections = {
-      contact: /email|phone|linkedin|github/i.test(extractedText),
-      education: /bachelor|b\.?tech|engineering|degree|university|college/i.test(extractedText),
-      experience: /experience|intern|work|project/i.test(extractedText),
-      skills: /skills|technologies|tools/i.test(extractedText),
-      projects: /project|built|developed|created/i.test(extractedText),
-      achievements: /award|hackathon|rank|winner|certification/i.test(extractedText),
-      measurableOutcomes: /\d+%|\d+ users|\d+ ms|\d+ seconds/i.test(extractedText),
-      links: /github\.com|linkedin\.com|portfolio/i.test(extractedText),
-    };
-
-    const presentSections = Object.values(sections).filter(Boolean).length;
-    const score = Math.round((presentSections / Object.keys(sections).length) * 100);
+    // 2. Full-featured Node NLP Analyzer
+    const analysis = analyzeResumeNLP(extractedText);
 
     return res.json({
       success: true,
       data: {
-        score,
-        grade: score >= 80 ? 'A' : score >= 60 ? 'B' : score >= 40 ? 'C' : 'D',
-        sectionsFound: sections,
+        ...analysis,
         fileName: req.file.originalname,
         fileSize: `${(req.file.size / 1024).toFixed(1)} KB`,
         extractedText: extractedText,
-        strengths: ['Resume text extracted successfully from PDF.'],
-        suggestions: ['Ensure quantifiable outcomes and achievements are included.'],
       },
-      engine: 'node_builtin_fallback',
+      engine: 'node_builtin_nlp',
     });
   } catch (err) {
     next(err);
@@ -179,7 +291,7 @@ router.post('/resume/analyze', authenticate, async (req, res, next) => {
 
     // 1. Try Python NLP Microservice
     const pyResult = await callPythonService('/api/resume/analyze', { resumeText });
-    if (pyResult.success) {
+    if (pyResult.success && pyResult.data?.score !== undefined) {
       return res.json({
         success: true,
         data: pyResult.data,
@@ -187,48 +299,13 @@ router.post('/resume/analyze', authenticate, async (req, res, next) => {
       });
     }
 
-    // 2. Built-in Fallback Analyzer
-    const sections = {
-      contact: /email|phone|linkedin|github/i.test(resumeText),
-      education: /bachelor|b\.?tech|engineering|degree|university|college/i.test(resumeText),
-      experience: /experience|intern|work|project/i.test(resumeText),
-      skills: /skills|technologies|tools/i.test(resumeText),
-      projects: /project|built|developed|created/i.test(resumeText),
-      achievements: /award|hackathon|rank|winner|certification/i.test(resumeText),
-      measurableOutcomes: /\d+%|\d+ users|\d+ ms|\d+ seconds/i.test(resumeText),
-      links: /github\.com|linkedin\.com|portfolio/i.test(resumeText),
-    };
-
-    const presentSections = Object.values(sections).filter(Boolean).length;
-    const score = Math.round((presentSections / Object.keys(sections).length) * 100);
-
-    const strengths = [];
-    const suggestions = [];
-
-    if (sections.skills) strengths.push('Skills section is present.');
-    if (sections.projects) strengths.push('Projects are highlighted.');
-    if (sections.experience) strengths.push('Experience/internships included.');
-    if (sections.measurableOutcomes) strengths.push('Includes measurable outcomes.');
-    if (sections.links) strengths.push('External profile links included.');
-
-    if (!sections.measurableOutcomes) suggestions.push('Add measurable outcomes (e.g., "Improved performance by 30%").');
-    if (!sections.achievements) suggestions.push('Include awards, hackathons, or certifications.');
-    if (!sections.links) suggestions.push('Add your GitHub and LinkedIn profile links.');
-    if (!sections.projects) suggestions.push('Include at least 2-3 key projects with descriptions.');
+    // 2. Full-featured Node NLP Analyzer
+    const analysis = analyzeResumeNLP(resumeText);
 
     return res.json({
       success: true,
-      data: {
-        score,
-        grade: score >= 80 ? 'A' : score >= 60 ? 'B' : score >= 40 ? 'C' : 'D',
-        sectionsFound: sections,
-        strengths,
-        suggestions,
-        breakdown: {
-          sections: `${presentSections}/${Object.keys(sections).length} present`,
-        },
-      },
-      engine: 'node_builtin_fallback',
+      data: analysis,
+      engine: 'node_builtin_nlp',
     });
   } catch (err) { next(err); }
 });
