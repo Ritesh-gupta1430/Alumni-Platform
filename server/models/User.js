@@ -148,8 +148,6 @@ const userSchema = new mongoose.Schema(
 );
 
 // Indexes
-userSchema.index({ email: 1 });
-userSchema.index({ collegeEmail: 1 }, { sparse: true });
 userSchema.index({ rollNumber: 1, department: 1 }, { sparse: true });
 userSchema.index({ role: 1 });
 userSchema.index({ department: 1 });

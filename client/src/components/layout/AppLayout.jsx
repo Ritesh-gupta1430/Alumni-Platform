@@ -11,6 +11,7 @@ import { Avatar } from '../ui/Avatar';
 import { VerificationBadge, RoleBadge } from '../ui/Badge';
 import { notificationsAPI } from '../../services/api';
 import { getInitials } from '../../lib/utils';
+import AIAssistantWidget from '../ui/AIAssistantWidget';
 
 function NavItem({ to, icon: Icon, label, badge, onClick }) {
   return (
@@ -505,6 +506,9 @@ export function AppLayout({ children }) {
           {children}
         </main>
       </div>
+
+      {/* Global Floating Institutional AI Assistant */}
+      <AIAssistantWidget />
     </div>
   );
 }

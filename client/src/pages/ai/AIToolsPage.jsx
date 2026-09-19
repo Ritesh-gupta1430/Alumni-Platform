@@ -754,7 +754,7 @@ function CareerRoadmapTab() {
 }
 
 /* =========================================================================
-   TAB 3: VECTOR MENTOR MATCHMAKER
+   TAB 3: VECTOR MENTOR MATCHMAKER (REAL DYNAMIC SCORING)
    ========================================================================= */
 function MentorMatchmakerTab() {
   const [mentors, setMentors] = useState([]);
@@ -778,31 +778,38 @@ function MentorMatchmakerTab() {
     }
   };
 
+  const getScoreBadgeClass = (score) => {
+    if (score >= 90) return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+    if (score >= 75) return 'bg-primary/20 text-primary border-primary/30';
+    if (score >= 60) return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+    return 'bg-blue-500/15 text-blue-300 border-blue-500/30';
+  };
+
   return (
     <div className="space-y-6">
       <div className="glass p-6 rounded-3xl border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-text-primary flex items-center gap-2">
             <Users className="w-5 h-5 text-primary" />
-            AI Vector Mentor Matchmaker
+            AI Semantic Mentor Matchmaker
           </h2>
           <p className="text-xs text-text-muted mt-0.5">
-            Mentors ranked using Scikit-Learn TF-IDF cosine similarity against your skills, career goals, and departmental affiliation.
+            Real-time multi-factor synergy calculated from your technical skills, career aspirations, department connection, and industry alignment.
           </p>
         </div>
         <button
           onClick={fetchMentorRecommendations}
-          className="px-4 py-2 rounded-xl bg-surface-elevated hover:bg-surface border border-border text-xs font-semibold text-text-primary flex items-center gap-2 transition-all w-fit"
+          className="px-4 py-2 rounded-xl bg-surface-elevated hover:bg-surface border border-border text-xs font-semibold text-text-primary flex items-center gap-2 transition-all w-fit cursor-pointer"
         >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Refresh Ranking
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          Recalculate Matches
         </button>
       </div>
 
       {loading && (
         <div className="glass p-12 rounded-3xl border border-border flex flex-col items-center justify-center min-h-[300px]">
           <RefreshCw className="w-8 h-8 text-primary animate-spin mb-4" />
-          <p className="text-sm font-semibold text-text-primary">Calculating Vector Match Scores...</p>
+          <p className="text-sm font-semibold text-text-primary">Analyzing Multi-Factor Alignment & Profile Vectors...</p>
         </div>
       )}
 
@@ -819,11 +826,13 @@ function MentorMatchmakerTab() {
           {mentors.map((mentor) => {
             const mentorUser = mentor.user || {};
             const initials = `${mentorUser.firstName?.[0] || ''}${mentorUser.lastName?.[0] || ''}`.toUpperCase() || 'M';
+            const score = mentor.matchScore || 85;
+            const mentorId = mentorUser._id || mentor._id;
 
             return (
               <div
                 key={mentor._id}
-                className="glass p-6 rounded-3xl border border-border hover:border-primary/50 transition-all duration-200 flex flex-col justify-between group"
+                className="glass p-6 rounded-3xl border border-border hover:border-primary/50 transition-all duration-200 flex flex-col justify-between group shadow-sm hover:shadow-md"
               >
                 <div>
                   <div className="flex items-start justify-between gap-4">
@@ -846,27 +855,29 @@ function MentorMatchmakerTab() {
                             <ShieldCheck className="w-4 h-4 text-emerald-400" />
                           )}
                         </h3>
-                        <p className="text-xs text-text-muted line-clamp-1">{mentor.headline || `${mentor.industry || 'Alumnus'} • ${mentor.yearsOfExperience || 0} yrs exp`}</p>
+                        <p className="text-xs text-text-muted line-clamp-1 font-medium">
+                          {mentor.headline || `${mentor.currentOrganization ? `${mentor.currentOrganization} • ` : ''}${mentor.yearsOfExperience || 0} yrs exp`}
+                        </p>
                       </div>
                     </div>
 
-                    {/* Match Score Badge */}
-                    <div className="flex flex-col items-end">
-                      <span className="px-3 py-1 rounded-xl text-xs font-extrabold bg-gradient-to-r from-primary to-accent text-white shadow-md">
-                        {mentor.matchScore || 85}% Match
+                    {/* Dynamic Real Match Score Badge */}
+                    <div className="flex flex-col items-end shrink-0">
+                      <span className={`px-3 py-1 rounded-xl text-xs font-black border tracking-tight ${getScoreBadgeClass(score)}`}>
+                        {score}% Match
                       </span>
                     </div>
                   </div>
 
                   {/* Reasons for Match */}
                   {mentor.matchReasons?.length > 0 && (
-                    <div className="mt-4 p-3 rounded-2xl bg-surface/60 border border-border/60">
-                      <span className="text-[10px] font-bold uppercase text-primary tracking-wider block mb-1.5">
-                        Why this match:
+                    <div className="mt-4 p-3.5 rounded-2xl bg-surface/80 border border-border/70 space-y-1.5">
+                      <span className="text-[10px] font-bold uppercase text-primary tracking-wider block">
+                        Match Insights:
                       </span>
                       <ul className="space-y-1 text-xs text-text-secondary">
                         {mentor.matchReasons.map((reason, rIdx) => (
-                          <li key={rIdx} className="flex items-center gap-1.5">
+                          <li key={rIdx} className="flex items-center gap-1.5 leading-snug">
                             <Check className="w-3 h-3 text-primary shrink-0" />
                             <span>{reason}</span>
                           </li>
@@ -875,14 +886,28 @@ function MentorMatchmakerTab() {
                     </div>
                   )}
 
-                  {/* Skills tags */}
+                  {/* Skills tags with highlighted matched skills */}
                   {mentor.skills?.length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-1">
-                      {mentor.skills.slice(0, 4).map((sk, sIdx) => (
-                        <span key={sIdx} className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-surface text-text-secondary border border-border">
-                          {sk.name || sk}
-                        </span>
-                      ))}
+                    <div className="mt-4 flex flex-wrap gap-1.5">
+                      {mentor.skills.slice(0, 5).map((sk, sIdx) => {
+                        const skillName = sk.name || sk;
+                        const isMatched = mentor.matchedSkills?.some(
+                          (ms) => ms.toLowerCase() === skillName.toLowerCase()
+                        );
+
+                        return (
+                          <span
+                            key={sIdx}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border ${
+                              isMatched
+                                ? 'bg-primary/15 text-primary border-primary/30 font-semibold'
+                                : 'bg-surface text-text-secondary border-border'
+                            }`}
+                          >
+                            {skillName}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -892,10 +917,10 @@ function MentorMatchmakerTab() {
                     Dept of {mentorUser.department || 'TCET'} ({mentorUser.graduationYear || 'Alum'})
                   </span>
                   <Link
-                    to={`/mentorship/mentor/${mentor._id}`}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+                    to={`/mentorship/mentor/${mentorId}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 text-xs font-semibold transition-all"
                   >
-                    View & Connect <ChevronRight className="w-3.5 h-3.5" />
+                    Request Guidance <ChevronRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
               </div>
@@ -908,25 +933,68 @@ function MentorMatchmakerTab() {
 }
 
 /* =========================================================================
-   TAB 4: ALUMNETRA INTERACTIVE ASSISTANT
+   TAB 4: ALUMNETRA INSTITUTIONAL INTERACTIVE ASSISTANT
    ========================================================================= */
 function AIAssistantTab({ user }) {
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: `Hello ${user?.firstName || 'there'}! I am the AlumNetra Institutional AI Assistant. You can ask me how to find alumni mentors, get your ATS resume reviewed, explore job opportunities, or support TCET donation campaigns. How can I help you today?`,
+      text: `Hello **${user?.firstName || 'there'}**! 👋\n\nI am the **AlumNetra Institutional AI Assistant** for TCET. How can I help you today? You can ask me to:\n\n• 🤝 Find alumni mentors tailored to your domain\n• 💼 Explore latest campus & alumni job opportunities\n• 📄 Get ATS resume enhancement recommendations\n• ✉️ Generate professional cold reach-out messages\n• 🎯 Practice top technical interview questions\n• 🏛️ Learn about TCET donation campaigns & 80G tax exemptions`,
       time: 'Just now',
+      actions: [
+        { label: 'Find React Mentors', query: 'Find mentors for React and Full Stack' },
+        { label: 'Latest Job Openings', query: 'What are the latest jobs and internships?' },
+        { label: 'ATS Resume Tips', query: 'How do I improve my resume for placements?' },
+        { label: 'Cold Reach-Out Template', query: 'Help me draft a cold reach-out message to an alumnus' },
+      ],
     },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [activeCategory, setActiveCategory] = useState('all');
 
-  const samplePrompts = [
-    'How do I find a mentor matching my career goals?',
-    'How can I improve my resume for technical placements?',
-    'Tell me how donation campaigns work and about 80G tax receipts.',
-    'How do I verify my institutional account with my college ID?',
+  const categories = [
+    { id: 'all', label: 'All Topics' },
+    { id: 'mentorship', label: 'Mentorship' },
+    { id: 'jobs', label: 'Placements & Jobs' },
+    { id: 'resume', label: 'Resume ATS' },
+    { id: 'interview', label: 'Interview Prep' },
+    { id: 'outreach', label: 'Outreach Template' },
   ];
+
+  const categoryPrompts = {
+    all: [
+      'Find mentors matching my career goals',
+      'How can I improve my resume for technical placements?',
+      'Give me top interview questions for Full Stack Engineer',
+      'Draft a professional reach-out message to an alumnus',
+      'Tell me how donation campaigns work and about 80G tax receipts.',
+    ],
+    mentorship: [
+      'Find mentors for React, Node, and System Design',
+      'Show me AI/ML mentors from TCET IT department',
+      'How does the 1-on-1 mentorship process work?',
+    ],
+    jobs: [
+      'What are the latest job and internship openings?',
+      'How do I request an alumni employee referral?',
+      'How does the AI Job Match score calculate compatibility?',
+    ],
+    resume: [
+      'What action verbs should I use in my engineering resume?',
+      'How do I add quantifiable metrics to project bullet points?',
+      'What are the key ATS sections required by recruiters?',
+    ],
+    interview: [
+      'Give me top React.js interview questions with explanations',
+      'Explain System Design concepts frequently asked in placements',
+      'Top Data Structures and Algorithms patterns for coding rounds',
+    ],
+    outreach: [
+      'Help me draft a polite cold email to an alumnus at Microsoft',
+      'What is the best way to ask for career guidance on LinkedIn?',
+    ],
+  };
 
   const handleSend = async (textToSend) => {
     const query = textToSend || input;
@@ -939,8 +1007,19 @@ function AIAssistantTab({ user }) {
 
     try {
       const res = await api.post('/ai/assistant', { message: query });
-      const reply = res.data?.data?.reply || 'I am ready to help with any queries regarding AlumNetra features!';
-      setMessages((prev) => [...prev, { sender: 'bot', text: reply, time: 'Just now' }]);
+      const replyData = res.data?.data;
+      const replyText = replyData?.reply || 'I am ready to help with any queries regarding AlumNetra features!';
+      const actions = replyData?.actions || [];
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: 'bot',
+          text: replyText,
+          actions: actions,
+          time: 'Just now',
+        },
+      ]);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -951,8 +1030,77 @@ function AIAssistantTab({ user }) {
     }
   };
 
+  const clearChat = () => {
+    setMessages([
+      {
+        sender: 'bot',
+        text: `Chat reset. Hello **${user?.firstName || 'there'}**! How can I assist you with mentorship, placements, or your career roadmap today?`,
+        time: 'Just now',
+      },
+    ]);
+  };
+
+  // Helper to render basic markdown formatting cleanly
+  const renderFormattedText = (text) => {
+    if (!text) return null;
+
+    // Check for code block ```
+    if (text.includes('```')) {
+      const parts = text.split('```');
+      return (
+        <div className="space-y-2">
+          {parts.map((part, i) => {
+            if (i % 2 === 1) {
+              const lines = part.trim().split('\n');
+              const codeContent = lines[0] === 'text' || lines[0] === 'javascript' ? lines.slice(1).join('\n') : part;
+              return (
+                <div key={i} className="my-2 p-3 rounded-xl bg-surface-elevated/90 border border-border font-mono text-xs text-text-primary whitespace-pre-wrap overflow-x-auto">
+                  {codeContent.trim()}
+                </div>
+              );
+            }
+            return <p key={i} className="whitespace-pre-line leading-relaxed">{renderInlineMarkup(part)}</p>;
+          })}
+        </div>
+      );
+    }
+
+    return <div className="whitespace-pre-line leading-relaxed space-y-1">{renderInlineMarkup(text)}</div>;
+  };
+
+  const renderInlineMarkup = (content) => {
+    // Process simple markdown (headers, bolding, code backticks)
+    const lines = content.split('\n');
+    return lines.map((line, idx) => {
+      let trimmed = line;
+      let isHeader = false;
+      if (trimmed.startsWith('### ')) {
+        isHeader = true;
+        trimmed = trimmed.replace('### ', '');
+      }
+
+      // Replace **bold**
+      const parts = trimmed.split(/(\*\*.*?\*\*|`.*?`)/g);
+
+      const parsedLine = parts.map((seg, sIdx) => {
+        if (seg.startsWith('**') && seg.endsWith('**')) {
+          return <strong key={sIdx} className="font-bold text-text-primary">{seg.slice(2, -2)}</strong>;
+        }
+        if (seg.startsWith('`') && seg.endsWith('`')) {
+          return <code key={sIdx} className="px-1.5 py-0.5 rounded bg-surface border border-border/80 text-[11px] font-mono text-primary">{seg.slice(1, -1)}</code>;
+        }
+        return seg;
+      });
+
+      if (isHeader) {
+        return <h4 key={idx} className="font-extrabold text-sm text-text-primary mt-2 mb-1">{parsedLine}</h4>;
+      }
+      return <div key={idx}>{parsedLine}</div>;
+    });
+  };
+
   return (
-    <div className="glass p-6 sm:p-8 rounded-3xl border border-border flex flex-col h-[650px]">
+    <div className="glass p-6 sm:p-8 rounded-3xl border border-border flex flex-col h-[700px]">
       {/* Top Bar */}
       <div className="flex items-center justify-between pb-4 border-b border-border/50">
         <div className="flex items-center gap-3">
@@ -961,20 +1109,44 @@ function AIAssistantTab({ user }) {
           </div>
           <div>
             <h3 className="font-bold text-sm text-text-primary">AlumNetra Institutional AI Assistant</h3>
-            <span className="text-[11px] text-emerald-400 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active • Python/NLP Backend
+            <span className="text-[11px] text-emerald-400 flex items-center gap-1 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> TCET Intelligent Domain Engine
             </span>
           </div>
         </div>
+
+        <button
+          onClick={clearChat}
+          className="text-xs text-text-muted hover:text-text-primary px-3 py-1 rounded-xl hover:bg-surface border border-transparent hover:border-border transition-all"
+        >
+          Clear Chat
+        </button>
+      </div>
+
+      {/* Category Tabs */}
+      <div className="py-2.5 flex items-center gap-1.5 overflow-x-auto scrollbar-none border-b border-border/30">
+        {categories.map((cat) => (
+          <button
+            key={cat.id}
+            onClick={() => setActiveCategory(cat.id)}
+            className={`px-3 py-1 rounded-xl text-xs font-medium transition-all whitespace-nowrap ${
+              activeCategory === cat.id
+                ? 'bg-primary text-white shadow-sm'
+                : 'bg-surface hover:bg-surface-elevated text-text-muted hover:text-text-primary'
+            }`}
+          >
+            {cat.label}
+          </button>
+        ))}
       </div>
 
       {/* Suggested Prompt Chips */}
-      <div className="py-3 overflow-x-auto scrollbar-none flex gap-2">
-        {samplePrompts.map((prompt, idx) => (
+      <div className="py-2 overflow-x-auto scrollbar-none flex gap-2 shrink-0">
+        {(categoryPrompts[activeCategory] || categoryPrompts.all).map((prompt, idx) => (
           <button
             key={idx}
             onClick={() => handleSend(prompt)}
-            className="px-3 py-1.5 rounded-xl bg-surface border border-border hover:border-primary/50 text-xs text-text-secondary hover:text-text-primary whitespace-nowrap transition-all"
+            className="px-3 py-1.5 rounded-xl bg-surface-elevated/70 border border-border hover:border-primary/50 text-xs text-text-secondary hover:text-text-primary whitespace-nowrap transition-all cursor-pointer hover:scale-[1.01]"
           >
             {prompt}
           </button>
@@ -989,7 +1161,7 @@ function AIAssistantTab({ user }) {
             className={`flex items-start gap-3 ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
           >
             {msg.sender === 'bot' ? (
-              <div className="w-8 h-8 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0 mt-1">
+              <div className="w-8 h-8 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0 mt-1 shadow-sm">
                 <Bot className="w-4 h-4" />
               </div>
             ) : (
@@ -997,14 +1169,35 @@ function AIAssistantTab({ user }) {
                 {user?.firstName?.[0] || 'U'}
               </div>
             )}
-            <div
-              className={`max-w-[80%] sm:max-w-[70%] p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${
-                msg.sender === 'user'
-                  ? 'bg-primary text-white rounded-tr-none shadow-md'
-                  : 'glass border border-border/80 text-text-primary rounded-tl-none'
-              }`}
-            >
-              {msg.text}
+            <div className="max-w-[85%] sm:max-w-[75%] space-y-2">
+              <div
+                className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                  msg.sender === 'user'
+                    ? 'bg-primary text-white rounded-tr-none shadow-md font-medium'
+                    : 'glass border border-border text-text-primary rounded-tl-none shadow-sm'
+                }`}
+              >
+                {renderFormattedText(msg.text)}
+              </div>
+
+              {/* Action Chips if provided */}
+              {msg.actions && msg.actions.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {msg.actions.map((act, aIdx) => (
+                    <button
+                      key={aIdx}
+                      onClick={() => {
+                        if (act.query) handleSend(act.query);
+                        else if (act.url) window.location.href = act.url;
+                      }}
+                      className="px-2.5 py-1 rounded-xl bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 text-xs font-semibold transition-all inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      {act.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -1014,8 +1207,9 @@ function AIAssistantTab({ user }) {
             <div className="w-8 h-8 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0">
               <Bot className="w-4 h-4 animate-spin" />
             </div>
-            <div className="p-4 rounded-2xl glass border border-border/80 text-xs text-text-muted rounded-tl-none">
-              Thinking...
+            <div className="p-4 rounded-2xl glass border border-border text-xs text-text-muted rounded-tl-none flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
+              Analyzing TCET database & generating response...
             </div>
           </div>
         )}
@@ -1028,13 +1222,13 @@ function AIAssistantTab({ user }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="Ask about mentorship, career roadmaps, jobs, or college features..."
-          className="flex-1 py-3 px-4 rounded-2xl bg-surface border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 text-xs sm:text-sm text-text-primary"
+          placeholder="Ask about mentors, interview prep, resumes, jobs, or college features..."
+          className="flex-1 py-3 px-4 rounded-2xl bg-surface border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 text-xs sm:text-sm text-text-primary placeholder:text-text-muted outline-none"
         />
         <button
           onClick={() => handleSend()}
           disabled={!input.trim() || loading}
-          className="p-3 rounded-2xl bg-primary text-white hover:bg-primary/90 transition-all shadow-md shadow-primary/20 disabled:opacity-50"
+          className="p-3 rounded-2xl bg-primary text-white hover:bg-primary/90 transition-all shadow-md shadow-primary/20 disabled:opacity-50 cursor-pointer"
         >
           <Send className="w-4 h-4" />
         </button>
@@ -1042,3 +1236,4 @@ function AIAssistantTab({ user }) {
     </div>
   );
 }
+

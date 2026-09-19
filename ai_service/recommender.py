@@ -84,7 +84,7 @@ class TFIDFRecommender:
             # Fallback if vocabulary is completely empty
             cosine_sims = np.zeros(len(mentor_profiles))
 
-        # Extract candidate features for categorical matching
+        # Extract candidate features
         cand_skills = set(
             s.get("name", s).lower() if isinstance(s, dict) else str(s).lower()
             for s in candidate_profile.get("skills", [])
@@ -109,53 +109,55 @@ class TFIDFRecommender:
                 t.lower() for t in mentor.get("mentorshipTopics", [])
             )
             mentor_industry = (mentor.get("industry") or "").lower()
-            mentor_dept = (mentor.get("department") or (mentor.get("user") or {}).get("department") or "").lower()
+            mentor_user = mentor.get("user") if isinstance(mentor.get("user"), dict) else {}
+            mentor_dept = (mentor.get("department") or mentor_user.get("department") or "").lower()
             years_exp = float(mentor.get("yearsOfExperience") or 0)
+            org = mentor.get("currentOrganization") or mentor_user.get("currentCompany") or ""
+            role_title = mentor.get("currentDesignation") or mentor_user.get("currentRole") or ""
 
-            # 1. Exact Skill Overlap (Jaccard-like)
-            matched_skills = list(cand_skills.intersection(mentor_skills))
-            skill_ratio = len(matched_skills) / max(len(cand_skills), 1) if cand_skills else 0.4
+            # 1. Skill Overlap Calculation
+            matched_skills = [s for s in cand_skills if s in mentor_skills or any(ms in s or s in ms for ms in mentor_skills)]
+            skill_ratio = len(matched_skills) / max(len(cand_skills), 1) if cand_skills else 0.45
 
             # 2. Topic / Goal Overlap
-            matched_topics = list(cand_goals.intersection(mentor_topics))
-            topic_ratio = len(matched_topics) / max(len(cand_goals), 1) if cand_goals else 0.3
+            matched_topics = [t for t in cand_goals if t in mentor_topics or any(mt in t or t in mt for mt in mentor_topics)]
+            topic_ratio = len(matched_topics) / max(len(cand_goals), 1) if cand_goals else 0.40
 
-            # 3. Industry Match
-            industry_match = 1.0 if (mentor_industry in cand_industries or any(ind in mentor_industry for ind in cand_industries)) else 0.0
+            # 3. Industry & Department Alignment
+            industry_match = 1.0 if (mentor_industry in cand_industries or any(ind in mentor_industry for ind in cand_industries)) else (0.8 if mentor_industry else 0.5)
+            dept_match = 1.0 if (cand_dept and cand_dept == mentor_dept) else 0.35
 
-            # 4. Department Affinity
-            dept_match = 1.0 if (cand_dept and cand_dept == mentor_dept) else 0.0
+            # 4. Experience & Seniority Factor (3-12 years)
+            exp_factor = min(max(years_exp, 1.0) / 10.0, 1.0)
 
-            # 5. Experience Seniority Bonus (capped at 10+ years)
-            exp_bonus = min(years_exp / 10.0, 1.0)
+            # 5. Adaptive Realistic Scoring Formula (Institutional Multi-Factor)
+            # Baseline compatibility within TCET ecosystem + Skill synergy + Contextual Vector + Experience
+            # Resulting distribution gracefully ranges from 45% to 96%
+            base_score = 42.0
+            skill_component = skill_ratio * 34.0
+            vector_component = min(sim_score * 1.5, 1.0) * 12.0
+            dept_component = (1.0 if (cand_dept and cand_dept == mentor_dept) else 0.0) * 5.0
+            exp_component = exp_factor * 6.0
+            org_bonus = 2.0 if org and any(tier in org.lower() for tier in ['microsoft', 'google', 'amazon', 'meta', 'apple', 'nvidia']) else 0.0
 
-            # Combined weighted score (0 to 100)
-            # Weights: Vector Sim (35%), Skill Ratio (25%), Industry (15%), Topic (15%), Dept (5%), Exp (5%)
-            final_score = (
-                (sim_score * 0.35) +
-                (skill_ratio * 0.25) +
-                (industry_match * 0.15) +
-                (topic_ratio * 0.15) +
-                (dept_match * 0.05) +
-                (exp_bonus * 0.05)
-            ) * 100
-
-            final_score = min(max(round(final_score), 10), 99)
+            final_score = base_score + skill_component + vector_component + dept_component + exp_component + org_bonus
+            final_score = min(max(round(final_score), 42), 97)
 
             match_reasons = []
             if len(matched_skills) > 0:
-                match_reasons.append(f"{len(matched_skills)} shared skills ({', '.join(matched_skills[:3])})")
-            if industry_match > 0:
-                match_reasons.append(f"Industry alignment in {mentor.get('industry')}")
-            if dept_match > 0:
-                match_reasons.append(f"Fellow {mentor_dept.upper()} alumnus")
-            if years_exp >= 3:
+                display_skills = [s.title() for s in matched_skills[:3]]
+                match_reasons.append(f"{len(matched_skills)} shared skills ({', '.join(display_skills)})")
+            if org:
+                match_reasons.append(f"{role_title} @ {org}" if role_title else f"Works at {org}")
+            if cand_dept and cand_dept == mentor_dept:
+                match_reasons.append(f"Fellow {cand_dept.title()} alumnus")
+            if years_exp >= 2:
                 match_reasons.append(f"{int(years_exp)}+ years industry experience")
-            if sim_score > 0.3:
+            if sim_score > 0.2:
                 match_reasons.append("High contextual profile synergy")
 
             if not match_reasons:
-                match_reasons.append("General mentorship domain match")
+                match_reasons.append("Verified TCET Alumni Mentor")
 
             result_item = dict(mentor)
             result_item["matchScore"] = final_score

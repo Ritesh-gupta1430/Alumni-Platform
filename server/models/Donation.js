@@ -58,7 +58,6 @@ const donationCampaignSchema = new mongoose.Schema(
 
 donationCampaignSchema.index({ status: 1, endDate: 1 });
 donationCampaignSchema.index({ category: 1 });
-donationCampaignSchema.index({ slug: 1 });
 donationCampaignSchema.index({ featuredOrder: 1 });
 
 const DonationCampaign = mongoose.model('DonationCampaign', donationCampaignSchema);
@@ -96,7 +95,6 @@ const donationSchema = new mongoose.Schema(
 
 donationSchema.index({ campaign: 1, status: 1 });
 donationSchema.index({ donor: 1, createdAt: -1 });
-donationSchema.index({ donationId: 1 });
 donationSchema.index({ status: 1 });
 donationSchema.index({ createdAt: -1 });
 

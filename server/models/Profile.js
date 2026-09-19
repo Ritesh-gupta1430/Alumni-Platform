@@ -224,7 +224,6 @@ const profileSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-profileSchema.index({ user: 1 });
 profileSchema.index({ isMentor: 1, mentorshipAvailability: 1 });
 profileSchema.index({ 'skills.name': 1 });
 profileSchema.index({ industry: 1 });

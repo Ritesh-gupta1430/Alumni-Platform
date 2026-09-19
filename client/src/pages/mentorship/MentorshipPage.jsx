@@ -35,6 +35,7 @@ export default function MentorshipPage() {
   const [searchSkills, setSearchSkills] = useState('');
   const [selectedDept, setSelectedDept] = useState('');
   const [industryFilter, setIndustryFilter] = useState('');
+  const [sortBy, setSortBy] = useState('match');
 
   // Requests & Active state
   const [myRequests, setMyRequests] = useState([]);
@@ -49,6 +50,7 @@ export default function MentorshipPage() {
         skills: searchSkills || undefined,
         department: selectedDept || undefined,
         industry: industryFilter || undefined,
+        sortBy: sortBy || 'match',
         limit: 18,
       });
       setMentors(res.data.data.mentors || []);
@@ -57,7 +59,7 @@ export default function MentorshipPage() {
     } finally {
       setLoadingMentors(false);
     }
-  }, [searchSkills, selectedDept, industryFilter, toast]);
+  }, [searchSkills, selectedDept, industryFilter, sortBy, toast]);
 
   // Fetch Requests
   const fetchMyRequests = useCallback(async () => {
@@ -91,6 +93,13 @@ export default function MentorshipPage() {
     else if (activeTab === 'active') fetchActiveMentorships();
   }, [activeTab, fetchMentors, fetchMyRequests, fetchActiveMentorships]);
 
+  const getMatchBadgeStyle = (score) => {
+    if (score >= 90) return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+    if (score >= 75) return 'bg-primary/20 text-primary border-primary/30';
+    if (score >= 60) return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+    return 'bg-blue-500/15 text-blue-300 border-blue-500/30';
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
       {/* Header Banner */}
@@ -105,13 +114,20 @@ export default function MentorshipPage() {
           </p>
         </div>
 
-        {profile?.isMentor && (
-          <Link to="/mentorship/mentor">
-            <Button variant="gold" className="flex items-center gap-2 whitespace-nowrap">
-              <Users size={16} /> Mentor Dashboard
+        <div className="flex items-center gap-2">
+          <Link to="/ai-tools">
+            <Button variant="secondary" className="flex items-center gap-1.5 text-xs">
+              <Sparkles size={14} className="text-primary" /> AI Matchmaker
             </Button>
           </Link>
-        )}
+          {profile?.isMentor && (
+            <Link to="/mentorship/mentor">
+              <Button variant="gold" className="flex items-center gap-2 whitespace-nowrap text-xs">
+                <Users size={14} /> Mentor Dashboard
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Navigation Tabs */}
@@ -153,7 +169,7 @@ export default function MentorshipPage() {
         <div className="space-y-6">
           {/* Search & Filter Bar */}
           <div className="card p-4 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <Input
                 icon={Search}
                 placeholder="Search skills (e.g. AI, React, Cloud)..."
@@ -179,6 +195,15 @@ export default function MentorshipPage() {
                 value={industryFilter}
                 onChange={(e) => setIndustryFilter(e.target.value)}
               />
+
+              <Select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              >
+                <option value="match">✨ Best AI Match</option>
+                <option value="experience">💼 Most Experienced</option>
+                <option value="availability">⚡ Highest Availability</option>
+              </Select>
             </div>
           </div>
 
@@ -195,6 +220,8 @@ export default function MentorshipPage() {
                 const mentorUser = m.user;
                 if (!mentorUser) return null;
 
+                const score = m.matchScore || 85;
+
                 return (
                   <motion.div
                     key={m._id}
@@ -203,7 +230,7 @@ export default function MentorshipPage() {
                     className="card p-6 flex flex-col justify-between hover:border-amber-400/50 transition-all shadow-md group relative"
                   >
                     <div className="space-y-3">
-                      {/* Top Row: Avatar & Status */}
+                      {/* Top Row: Avatar & Status & Match Badge */}
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <Avatar
@@ -226,7 +253,12 @@ export default function MentorshipPage() {
                           </div>
                         </div>
 
-                        <StatusBadge status={m.mentorshipAvailability || 'open'} />
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black border ${getMatchBadgeStyle(score)}`}>
+                            {score}% Match
+                          </span>
+                          <StatusBadge status={m.mentorshipAvailability || 'open'} />
+                        </div>
                       </div>
 
                       {/* Headline / Org */}

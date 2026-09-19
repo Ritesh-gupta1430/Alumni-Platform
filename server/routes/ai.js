@@ -5,6 +5,7 @@ const Profile = require('../models/Profile');
 const User = require('../models/User');
 const Job = require('../models/Job');
 const { AppError } = require('../middleware/errorHandler');
+const { processAssistantQuery } = require('../services/aiAssistantService');
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://127.0.0.1:8000';
 
@@ -458,47 +459,123 @@ router.get('/recommendations/mentors', authenticate, async (req, res, next) => {
       });
     }
 
-    // 4. Built-in Fallback Scorer
-    const mySkills = profile?.skills?.map((s) => (typeof s === 'string' ? s.toLowerCase() : s.name?.toLowerCase())) || [];
+    // 4. Built-in Multi-Factor Semantic Recommender (Real Scoring)
+    const normalizeCanonical = (val) => {
+      if (!val) return '';
+      const s = (typeof val === 'string' ? val : val.name || '').toLowerCase().trim();
+      if (['react', 'react.js', 'reactjs', 'frontend', 'react native'].includes(s)) return 'react';
+      if (['node', 'nodejs', 'node.js', 'express', 'express.js', 'backend'].includes(s)) return 'node';
+      if (['python', 'py', 'django', 'fastapi', 'flask'].includes(s)) return 'python';
+      if (['js', 'javascript', 'ts', 'typescript', 'es6'].includes(s)) return 'javascript';
+      if (['mongo', 'mongodb', 'mongoose'].includes(s)) return 'mongodb';
+      if (['sql', 'postgresql', 'postgres', 'mysql', 'database', 'dbms'].includes(s)) return 'sql';
+      if (['aws', 'cloud', 'gcp', 'azure', 'devops', 'docker', 'kubernetes'].includes(s)) return 'cloud';
+      if (['ai', 'ml', 'machine learning', 'deep learning', 'nlp', 'data science', 'genai'].includes(s)) return 'ai/ml';
+      if (['dsa', 'data structures', 'algorithms', 'leetcode', 'c++', 'java', 'problem solving'].includes(s)) return 'dsa';
+      if (['system design', 'distributed systems', 'architecture', 'microservices', 'scalability'].includes(s)) return 'system design';
+      return s;
+    };
+
+    const myRawSkills = profile?.skills?.map((s) => (typeof s === 'string' ? s : s.name)) || [];
+    const myNormSkills = myRawSkills.map(normalizeCanonical).filter(Boolean);
     const myGoals = profile?.careerGoals || [];
     const myIndustries = profile?.targetIndustries || [];
+    const myDept = req.user.department || '';
 
     const scored = activeMentors
       .map((mentor) => {
-        const mentorSkills = mentor.skills?.map((s) => (typeof s === 'string' ? s.toLowerCase() : s.name?.toLowerCase())) || [];
+        const mentorRawSkills = mentor.skills?.map((s) => (typeof s === 'string' ? s : s.name)) || [];
+        const mentorNormSkills = mentorRawSkills.map(normalizeCanonical).filter(Boolean);
         const mentorTopics = mentor.mentorshipTopics?.map((t) => t.toLowerCase()) || [];
-        const mentorIndustry = mentor.industry?.toLowerCase() || '';
+        const mentorIndustry = (mentor.industry || '').toLowerCase();
+        const mentorDept = mentor.user?.department || '';
+        const mentorOrg = mentor.currentOrganization || '';
+        const mentorYears = mentor.yearsOfExperience || 0;
 
-        const skillMatch = mySkills.length > 0
-          ? mySkills.filter((s) => mentorSkills.includes(s)).length / Math.max(mySkills.length, 1)
-          : 0.5;
-        const topicMatch = myGoals.length > 0
-          ? myGoals.filter((g) => mentorTopics.some((t) => t.includes(g.toLowerCase()))).length / Math.max(myGoals.length, 1)
-          : 0.4;
-        const industryMatch = myIndustries.some((i) => mentorIndustry.includes(i.toLowerCase())) ? 1 : 0.3;
-        const deptMatch = mentor.user?.department === req.user.department ? 0.5 : 0;
-        const experienceBonus = (mentor.yearsOfExperience || 0) > 3 ? 0.1 : 0.05;
+        // 1. Direct & Semantic Skill Overlap
+        const matchedRaw = [];
+        const matchedNorm = [];
+        mentorRawSkills.forEach((raw, idx) => {
+          const norm = mentorNormSkills[idx];
+          if (myNormSkills.includes(norm) || myRawSkills.some((ms) => ms.toLowerCase() === raw.toLowerCase())) {
+            matchedRaw.push(raw);
+            matchedNorm.push(norm);
+          }
+        });
 
-        const rawScore = (skillMatch * 0.35 + topicMatch * 0.25 + industryMatch * 0.20 + deptMatch * 0.10 + experienceBonus);
-        const score = Math.round(Math.min(98, Math.max(68, rawScore * 100)));
+        const skillOverlapRatio = myNormSkills.length > 0
+          ? matchedNorm.length / Math.max(myNormSkills.length, 1)
+          : (mentorRawSkills.length > 0 ? 0.35 : 0.2);
 
+        // 2. Mentorship Focus & Career Goal Alignment
+        const matchedTopics = myGoals.filter((g) =>
+          mentorTopics.some((t) => t.includes(g.toLowerCase()) || g.toLowerCase().includes(t))
+        );
+        const topicOverlapRatio = myGoals.length > 0
+          ? matchedTopics.length / Math.max(myGoals.length, 1)
+          : (mentorTopics.length > 0 ? 0.3 : 0.15);
+
+        // 3. Department Affinity (TCET institutional bond)
+        const isSameDept = myDept && mentorDept && myDept.toLowerCase() === mentorDept.toLowerCase();
+        const deptWeight = isSameDept ? 0.18 : 0.04;
+
+        // 4. Industry Match
+        const isIndustryMatch = myIndustries.some((i) => mentorIndustry.includes(i.toLowerCase()) || i.toLowerCase().includes(mentorIndustry));
+        const industryWeight = isIndustryMatch ? 0.14 : (mentorIndustry ? 0.06 : 0.02);
+
+        // 5. Seniority & Organization Tier Bonus
+        const expScore = Math.min(mentorYears / 10, 1.0) * 0.10;
+        const isTopTierOrg = /(google|microsoft|amazon|meta|apple|nvidia|morgan stanley|barclays|jp morgan|jpmorgan|tcs|jio|adobe|uber|goldman)/i.test(mentorOrg);
+        const tierBonus = isTopTierOrg ? 0.08 : (mentorOrg ? 0.03 : 0.0);
+
+        // 6. Base institutional compatibility (20%)
+        const baseInstitutional = 0.22;
+
+        // Calculate Real Dynamic Score (ranges from 35% to 97%)
+        const rawScore = (
+          baseInstitutional +
+          (skillOverlapRatio * 0.32) +
+          (topicOverlapRatio * 0.18) +
+          deptWeight +
+          industryWeight +
+          expScore +
+          tierBonus
+        );
+
+        const score = Math.min(97, Math.max(38, Math.round(rawScore * 100)));
+
+        // Generate Real, Detailed Contextual Reasons
         const reasons = [];
-        if (skillMatch > 0.3) reasons.push(`${Math.round(skillMatch * 100)}% skill overlap`);
-        if (mentor.currentOrganization) reasons.push(`Works at ${mentor.currentOrganization}`);
-        if (deptMatch) reasons.push('Shared department background');
-        if (mentor.yearsOfExperience > 3) reasons.push(`${mentor.yearsOfExperience}+ years industry experience`);
-        if (reasons.length === 0) reasons.push('Verified TCET Alumni Mentor');
+        if (matchedRaw.length > 0) {
+          reasons.push(`${matchedRaw.length} shared skill${matchedRaw.length > 1 ? 's' : ''} (${matchedRaw.slice(0, 3).join(', ')})`);
+        }
+        if (mentorOrg) {
+          reasons.push(`${mentor.currentDesignation ? `${mentor.currentDesignation} at ` : 'Works at '}${mentorOrg}`);
+        }
+        if (isSameDept) {
+          reasons.push(`Fellow TCET ${mentorDept} Alum`);
+        }
+        if (mentorYears >= 2) {
+          reasons.push(`${mentorYears}+ years industry experience`);
+        }
+        if (matchedTopics.length > 0) {
+          reasons.push(`Guides in your goal: ${matchedTopics[0]}`);
+        }
+        if (reasons.length === 0) {
+          reasons.push('Verified TCET Alumni Mentor');
+        }
 
         return {
           ...mentor,
           matchScore: score,
           matchReasons: reasons,
+          matchedSkills: matchedRaw,
         };
       })
       .sort((a, b) => b.matchScore - a.matchScore)
-      .slice(0, 10);
+      .slice(0, 12);
 
-    return res.json({ success: true, data: scored, engine: 'node_builtin_tfidf' });
+    return res.json({ success: true, data: scored, engine: 'node_semantic_matchmaker' });
   } catch (err) { next(err); }
 });
 
@@ -591,33 +668,12 @@ router.post('/assistant', authenticate, async (req, res, next) => {
     const { message } = req.body;
     if (!message) throw new AppError('Message is required.', 400);
 
-    // 1. Try Python Microservice
-    const pyResult = await callPythonService('/api/assistant/query', { message });
-    if (pyResult.success) {
-      return res.json({
-        success: true,
-        data: pyResult.data,
-        engine: pyResult.engine,
-      });
-    }
-
-    // 2. Built-in Assistant
-    const msg = message.toLowerCase();
-    const responses = [
-      { keywords: ['mentor', 'mentorship'], response: 'To find a mentor, go to **Mentorship** in the sidebar. You can filter by skills, industry, and availability, or use the **AI Mentor Matchmaker** on the AI Tools page.' },
-      { keywords: ['job', 'internship', 'apply'], response: 'Browse opportunities in **Jobs** or **Internships**. Every job card includes an instant **AI Resume Matcher** calculating skill fit.' },
-      { keywords: ['profile', 'update', 'complete'], response: 'Go to your **Profile** to update Skills, Experience, and Career Goals. Your profile completion percentage increases as you fill in each section.' },
-      { keywords: ['donation', 'contribute', 'campaign'], response: 'Visit **Contributions** to support institutional scholarships and infrastructure with instant 80G tax receipts.' },
-      { keywords: ['verify', 'verification', 'document'], response: 'Go to **Settings → Document Verification** to upload your student ID or degree certificate for admin review.' },
-    ];
-
-    const matched = responses.find((r) => r.keywords.some((k) => msg.includes(k)));
-    const reply = matched?.response || 'I can help with questions about mentorship, jobs, internships, AI resume review, career roadmaps, and donation campaigns. How can I assist you?';
+    const assistantResult = await processAssistantQuery(message, req.user);
 
     return res.json({
       success: true,
-      data: { reply, source: 'alumnetra_assistant' },
-      engine: 'node_builtin_fallback',
+      data: assistantResult,
+      engine: assistantResult.source || 'institutional_ai_engine',
     });
   } catch (err) { next(err); }
 });

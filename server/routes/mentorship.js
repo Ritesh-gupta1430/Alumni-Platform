@@ -7,16 +7,91 @@ const { MentorshipRequest, Mentorship, MentorshipSession } = require('../models/
 const User = require('../models/User');
 const Profile = require('../models/Profile');
 
+// Helper to compute dynamic match score for mentorship explorer
+function computeMentorMatchScore(mentor, studentProfile, studentUser) {
+  const normalizeCanonical = (val) => {
+    if (!val) return '';
+    const s = (typeof val === 'string' ? val : val.name || '').toLowerCase().trim();
+    if (['react', 'react.js', 'reactjs', 'frontend'].includes(s)) return 'react';
+    if (['node', 'nodejs', 'node.js', 'express', 'express.js', 'backend'].includes(s)) return 'node';
+    if (['python', 'py', 'django', 'fastapi'].includes(s)) return 'python';
+    if (['js', 'javascript', 'ts', 'typescript'].includes(s)) return 'javascript';
+    if (['mongo', 'mongodb', 'mongoose'].includes(s)) return 'mongodb';
+    if (['sql', 'postgresql', 'mysql', 'database'].includes(s)) return 'sql';
+    if (['aws', 'cloud', 'gcp', 'azure', 'devops', 'docker'].includes(s)) return 'cloud';
+    if (['ai', 'ml', 'machine learning', 'data science'].includes(s)) return 'ai/ml';
+    if (['dsa', 'data structures', 'algorithms', 'problem solving'].includes(s)) return 'dsa';
+    if (['system design', 'architecture', 'distributed systems'].includes(s)) return 'system design';
+    return s;
+  };
+
+  const myRawSkills = studentProfile?.skills?.map((s) => (typeof s === 'string' ? s : s.name)) || [];
+  const myNormSkills = myRawSkills.map(normalizeCanonical).filter(Boolean);
+  const myGoals = studentProfile?.careerGoals || [];
+  const myIndustries = studentProfile?.targetIndustries || [];
+  const myDept = studentUser?.department || '';
+
+  const mentorRawSkills = mentor.skills?.map((s) => (typeof s === 'string' ? s : s.name)) || [];
+  const mentorNormSkills = mentorRawSkills.map(normalizeCanonical).filter(Boolean);
+  const mentorTopics = mentor.mentorshipTopics?.map((t) => t.toLowerCase()) || [];
+  const mentorIndustry = (mentor.industry || '').toLowerCase();
+  const mentorDept = mentor.user?.department || '';
+  const mentorOrg = mentor.currentOrganization || '';
+  const mentorYears = mentor.yearsOfExperience || 0;
+
+  const matchedRaw = [];
+  mentorRawSkills.forEach((raw, idx) => {
+    const norm = mentorNormSkills[idx];
+    if (myNormSkills.includes(norm) || myRawSkills.some((ms) => ms.toLowerCase() === raw.toLowerCase())) {
+      matchedRaw.push(raw);
+    }
+  });
+
+  const skillOverlap = myNormSkills.length > 0
+    ? matchedRaw.length / Math.max(myNormSkills.length, 1)
+    : (mentorRawSkills.length > 0 ? 0.35 : 0.2);
+
+  const matchedTopics = myGoals.filter((g) =>
+    mentorTopics.some((t) => t.includes(g.toLowerCase()) || g.toLowerCase().includes(t))
+  );
+  const topicOverlap = myGoals.length > 0
+    ? matchedTopics.length / Math.max(myGoals.length, 1)
+    : (mentorTopics.length > 0 ? 0.3 : 0.15);
+
+  const isSameDept = myDept && mentorDept && myDept.toLowerCase() === mentorDept.toLowerCase();
+  const deptBonus = isSameDept ? 0.18 : 0.04;
+  const isIndustryMatch = myIndustries.some((i) => mentorIndustry.includes(i.toLowerCase()));
+  const industryBonus = isIndustryMatch ? 0.14 : (mentorIndustry ? 0.06 : 0.02);
+  const expBonus = Math.min(mentorYears / 10, 1.0) * 0.10;
+  const isTopTierOrg = /(google|microsoft|amazon|meta|apple|nvidia|morgan stanley|barclays|jp morgan|jpmorgan|tcs|jio|adobe|uber)/i.test(mentorOrg);
+  const tierBonus = isTopTierOrg ? 0.08 : (mentorOrg ? 0.03 : 0.0);
+
+  const rawScore = 0.22 + (skillOverlap * 0.32) + (topicOverlap * 0.18) + deptBonus + industryBonus + expBonus + tierBonus;
+  const matchScore = Math.min(97, Math.max(38, Math.round(rawScore * 100)));
+
+  const reasons = [];
+  if (matchedRaw.length > 0) reasons.push(`${matchedRaw.length} shared skills (${matchedRaw.slice(0, 2).join(', ')})`);
+  if (isSameDept) reasons.push(`Fellow TCET ${mentorDept} Alumni`);
+  if (mentorOrg) reasons.push(`Works at ${mentorOrg}`);
+  if (mentorYears >= 2) reasons.push(`${mentorYears}+ yrs exp`);
+  if (!reasons.length) reasons.push('Verified TCET Mentor');
+
+  return { matchScore, matchReasons: reasons, matchedSkills: matchedRaw };
+}
+
 // GET /mentorship/mentors — discover mentors
 router.get('/mentors', authenticate, async (req, res, next) => {
   try {
-    const { skills, department, industry, page = 1, limit = 12 } = req.query;
+    const { skills, department, industry, sortBy = 'match', page = 1, limit = 18 } = req.query;
+
+    const studentProfile = await Profile.findOne({ user: req.user._id }).lean();
 
     const profileFilter = {
       $or: [
         { isMentor: true },
         { mentorshipAvailability: { $in: ['open', 'limited'] } },
       ],
+      user: { $ne: req.user._id },
     };
 
     if (skills) {
@@ -25,19 +100,14 @@ router.get('/mentors', authenticate, async (req, res, next) => {
     }
     if (industry) profileFilter.industry = { $regex: industry, $options: 'i' };
 
-    let [profiles, total] = await Promise.all([
-      Profile.find(profileFilter)
-        .populate({
-          path: 'user',
-          match: { accountStatus: 'active', role: { $in: ['ALUMNI', 'FACULTY'] }, ...(department ? { department } : {}) },
-          select: 'firstName lastName profilePhoto role department graduationYear verificationBadge',
-        })
-        .select('headline currentOrganization currentCity industry skills mentorshipTopics mentorshipAvailability maxMentees currentMenteeCount impactScore')
-        .skip((page - 1) * limit)
-        .limit(parseInt(limit))
-        .lean(),
-      Profile.countDocuments(profileFilter),
-    ]);
+    let profiles = await Profile.find(profileFilter)
+      .populate({
+        path: 'user',
+        match: { accountStatus: 'active', role: { $in: ['ALUMNI', 'FACULTY'] }, ...(department ? { department } : {}) },
+        select: 'firstName lastName profilePhoto role department graduationYear verificationBadge',
+      })
+      .select('headline currentOrganization currentCity industry skills mentorshipTopics mentorshipAvailability maxMentees currentMenteeCount yearsOfExperience impactScore')
+      .lean();
 
     let filtered = profiles.filter((p) => p.user !== null && p.user !== undefined);
 
@@ -45,10 +115,11 @@ router.get('/mentors', authenticate, async (req, res, next) => {
       const alumniUsers = await User.find({
         accountStatus: 'active',
         role: { $in: ['ALUMNI', 'FACULTY'] },
+        _id: { $ne: req.user._id },
         ...(department ? { department } : {}),
       })
         .select('firstName lastName profilePhoto role department graduationYear verificationBadge')
-        .limit(parseInt(limit))
+        .limit(20)
         .lean();
 
       const alumniIds = alumniUsers.map((u) => u._id);
@@ -69,12 +140,36 @@ router.get('/mentors', authenticate, async (req, res, next) => {
           mentorshipAvailability: 'open',
           maxMentees: 4,
           currentMenteeCount: 0,
+          yearsOfExperience: p.yearsOfExperience || 3,
         };
       });
-      total = filtered.length;
     }
 
-    return res.json({ success: true, data: { mentors: filtered, total, page: parseInt(page), pages: Math.ceil(total / limit) } });
+    // Attach dynamic real match scores
+    const mentorsWithScores = filtered.map((m) => {
+      const scoring = computeMentorMatchScore(m, studentProfile, req.user);
+      return {
+        ...m,
+        matchScore: scoring.matchScore,
+        matchReasons: scoring.matchReasons,
+        matchedSkills: scoring.matchedSkills,
+      };
+    });
+
+    // Sort accordingly
+    if (sortBy === 'match') {
+      mentorsWithScores.sort((a, b) => b.matchScore - a.matchScore);
+    } else if (sortBy === 'experience') {
+      mentorsWithScores.sort((a, b) => (b.yearsOfExperience || 0) - (a.yearsOfExperience || 0));
+    } else if (sortBy === 'availability') {
+      mentorsWithScores.sort((a, b) => (a.currentMenteeCount || 0) - (b.currentMenteeCount || 0));
+    }
+
+    const total = mentorsWithScores.length;
+    const startIndex = (parseInt(page) - 1) * parseInt(limit);
+    const paginated = mentorsWithScores.slice(startIndex, startIndex + parseInt(limit));
+
+    return res.json({ success: true, data: { mentors: paginated, total, page: parseInt(page), pages: Math.ceil(total / limit) } });
   } catch (err) { next(err); }
 });
 
