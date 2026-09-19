@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { useLocation, useNavigate, Navigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useLocation, useNavigate, Navigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion } from 'framer-motion';
-import { Lock, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { Lock, CheckCircle2, Eye, EyeOff, RefreshCw, ChevronLeft, Sparkles } from 'lucide-react';
 import { authAPI } from '../../services/api';
 import { useToast } from '../../components/ui/Toast';
 import { Button } from '../../components/ui/Button';
@@ -27,10 +27,29 @@ export default function ResetPasswordPage() {
   
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [devOtp, setDevOtp] = useState(state?.devOtp || null);
 
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
+    defaultValues: {
+      otp: state?.devOtp || '',
+    },
   });
+
+  useEffect(() => {
+    if (state?.devOtp) {
+      setValue('otp', state.devOtp);
+    }
+  }, [state?.devOtp, setValue]);
+
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
 
   // If no email in state, redirect to forgot password
   if (!state?.email) {
@@ -56,6 +75,24 @@ export default function ResetPasswordPage() {
     }
   };
 
+  const handleResend = async () => {
+    if (countdown > 0 || resending) return;
+    setResending(true);
+    try {
+      const res = await authAPI.forgotPassword({ email });
+      if (res?.data?.data?.devOtp) {
+        setDevOtp(res.data.data.devOtp);
+        setValue('otp', res.data.data.devOtp);
+      }
+      toast.success('A new reset OTP has been sent.', { title: 'OTP Resent' });
+      setCountdown(30);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setResending(false);
+    }
+  };
+
   return (
     <div
       style={{
@@ -76,6 +113,14 @@ export default function ResetPasswordPage() {
         animate={{ opacity: 1, y: 0 }}
         style={{ width: '100%', maxWidth: 420, position: 'relative', zIndex: 1 }}
       >
+        <Link 
+          to="/forgot-password" 
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 24, fontWeight: 500 }}
+          className="hover:text-brand-500 transition-colors"
+        >
+          <ChevronLeft size={16} /> Back to email entry
+        </Link>
+
         <div className="glass" style={{ borderRadius: 'var(--radius-2xl)', padding: 36 }}>
           <div style={{
             width: 56, height: 56, borderRadius: 14, background: 'rgba(16, 185, 129, 0.1)',
@@ -87,10 +132,46 @@ export default function ResetPasswordPage() {
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, marginBottom: 8, textAlign: 'center' }}>
             Set New Password
           </h1>
-          <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.5, textAlign: 'center' }}>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 20, lineHeight: 1.5, textAlign: 'center' }}>
             Enter the 6-digit code sent to <br/>
             <strong>{email}</strong>
           </p>
+
+          {devOtp && (
+            <div
+              style={{
+                background: 'rgba(99, 102, 241, 0.08)',
+                border: '1px dashed rgba(99, 102, 241, 0.35)',
+                borderRadius: 'var(--radius-md)',
+                padding: '10px 14px',
+                marginBottom: 20,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: 13,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Sparkles size={16} style={{ color: '#6366f1' }} />
+                <span>Dev OTP: <strong style={{ letterSpacing: 2, color: 'var(--color-brand-400)' }}>{devOtp}</strong></span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setValue('otp', devOtp)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--color-brand-400)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                Autofill
+              </button>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <Input
@@ -144,6 +225,35 @@ export default function ResetPasswordPage() {
               Reset Password <CheckCircle2 size={18} />
             </Button>
           </form>
+
+          <div style={{ marginTop: 20, textAlign: 'center', fontSize: 13, color: 'var(--color-text-muted)' }}>
+            Didn't receive the email?{' '}
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resending || countdown > 0}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: countdown > 0 ? 'var(--color-text-muted)' : 'var(--color-brand-400)',
+                fontWeight: 600,
+                cursor: countdown > 0 ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              {resending ? (
+                <>
+                  <RefreshCw size={12} className="animate-spin" /> Sending...
+                </>
+              ) : countdown > 0 ? (
+                `Resend in ${countdown}s`
+              ) : (
+                'Resend code'
+              )}
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>

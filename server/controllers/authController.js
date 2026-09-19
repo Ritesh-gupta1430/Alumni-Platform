@@ -379,14 +379,24 @@ async function forgotPassword(req, res, next) {
     user.emailOTPAttempts = 0;
     await user.save();
 
-    await emailService.sendOTPEmail({
-      to: user.email,
-      name: user.firstName,
-      otp,
-      purpose: 'password_reset',
-    });
+    try {
+      await emailService.sendOTPEmail({
+        to: user.email,
+        name: user.firstName,
+        otp,
+        purpose: 'password_reset',
+      });
+    } catch (emailErr) {
+      console.error('⚠️ [ForgotPassword] Email delivery warning:', emailErr.message);
+    }
 
-    return res.json({ success: true, message: 'If an account exists, a reset OTP has been sent.' });
+    return res.json({
+      success: true,
+      message: 'If an account exists, a reset OTP has been sent.',
+      data: {
+        devOtp: process.env.NODE_ENV !== 'production' ? otp : undefined,
+      },
+    });
   } catch (err) {
     next(err);
   }

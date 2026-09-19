@@ -27,9 +27,14 @@ export default function ForgotPasswordPage() {
   const onSubmit = async (data) => {
     setLoading(true);
     try {
-      await authAPI.forgotPassword(data);
+      const res = await authAPI.forgotPassword(data);
       toast.success('If an account exists, a reset code has been sent.', { title: 'Code Sent' });
-      navigate('/reset-password', { state: { email: data.email } });
+      navigate('/reset-password', {
+        state: {
+          email: data.email,
+          devOtp: res?.data?.data?.devOtp,
+        },
+      });
     } catch (err) {
       toast.error(getErrorMessage(err));
     } finally {

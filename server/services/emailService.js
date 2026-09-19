@@ -27,21 +27,39 @@ async function getTransporter() {
       port: 587,
       secure: false,
       auth: { user: testAccount.user, pass: testAccount.pass },
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 5000,
     });
     console.log(`📧 Ethereal email: ${testAccount.user}`);
     return transporter;
   }
 
-  // SMTP
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT, 10) || 587,
-    secure: false,
+  // SMTP (e.g. Gmail, SendGrid, custom SMTP)
+  const port = parseInt(process.env.SMTP_PORT, 10) || 587;
+  const isGmail = (process.env.SMTP_HOST || '').includes('gmail.com');
+
+  const transportOptions = {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port,
+    secure: port === 465,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
-  });
+    connectionTimeout: 5000,
+    greetingTimeout: 5000,
+    socketTimeout: 5000,
+    tls: {
+      rejectUnauthorized: false,
+    },
+  };
+
+  if (isGmail) {
+    transportOptions.service = 'gmail';
+  }
+
+  transporter = nodemailer.createTransport(transportOptions);
   return transporter;
 }
 
@@ -58,16 +76,31 @@ async function sendEmail({ to, subject, html, text }) {
     return { messageId: `console-${Date.now()}`, preview: null };
   }
 
-  const t = await getTransporter();
-  const info = await t.sendMail({ from, to, subject, html, text });
+  try {
+    const t = await getTransporter();
+    const info = await t.sendMail({ from, to, subject, html, text });
 
-  if (provider === 'ethereal') {
-    const preview = nodemailer.getTestMessageUrl(info);
-    console.log(`📧 Email preview: ${preview}`);
-    return { messageId: info.messageId, preview };
+    if (provider === 'ethereal') {
+      const preview = nodemailer.getTestMessageUrl(info);
+      console.log(`📧 Email preview: ${preview}`);
+      return { messageId: info.messageId, preview };
+    }
+
+    return { messageId: info.messageId, preview: null };
+  } catch (error) {
+    console.error(`\n⚠️  [EmailService] Failed to send email to ${to} via ${provider}: ${error.message}`);
+    console.log('📧 ===== EMAIL FALLBACK (Console) =====');
+    console.log(`To:      ${to}`);
+    console.log(`Subject: ${subject}`);
+    console.log(`Body:\n${text || '(HTML content)'}`);
+    console.log('=======================================\n');
+
+    if (process.env.NODE_ENV === 'production' && provider === 'smtp') {
+      throw error;
+    }
+
+    return { messageId: `fallback-${Date.now()}`, preview: null, fallback: true };
   }
-
-  return { messageId: info.messageId, preview: null };
 }
 
 // ===== Email Templates =====
