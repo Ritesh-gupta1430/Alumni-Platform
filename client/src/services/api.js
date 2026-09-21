@@ -188,6 +188,7 @@ export const donationsAPI = {
   verifyPayment: (donationId, data) => api.post(`/donations/${donationId}/verify`, data),
   getMine: (params) => api.get('/donations/mine', { params }),
   getReceipt: (donationId) => api.get(`/donations/receipt/${donationId}`),
+  downloadReceiptPDF: (donationId) => api.get(`/donations/receipt/${donationId}/pdf`, { responseType: 'blob' }),
   getAnalytics: () => api.get('/donations/admin/analytics'),
 };
 

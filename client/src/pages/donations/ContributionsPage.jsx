@@ -284,8 +284,10 @@ export default function ContributionsPage() {
                   className="card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                 >
                   <div className="space-y-1">
-                    <span className="badge badge-green text-[10px]">
-                      {don.status === 'success' ? 'Confirmed ✓' : don.status}
+                    <span className={`badge text-[10px] ${
+                      don.status === 'success' ? 'badge-green' : don.status === 'failed' ? 'badge-rose' : 'badge-amber'
+                    }`}>
+                      {don.status === 'success' ? 'Confirmed ✓' : don.status === 'failed' ? 'Failed ✕' : 'Pending / Processing'}
                     </span>
                     <h3 className="font-bold text-base text-[var(--color-text-primary)]">
                       {don.campaign?.title || 'Giving Campaign'}
@@ -301,14 +303,22 @@ export default function ContributionsPage() {
                       <div className="text-lg font-bold font-mono text-emerald-400">
                         {formatCurrency(don.amount)}
                       </div>
-                      <span className="text-[10px] text-[var(--color-text-muted)]">Tax Exemption 80G Eligible</span>
+                      <span className="text-[10px] text-[var(--color-text-muted)]">
+                        {don.status === 'success' ? 'Tax Exemption 80G Eligible' : 'Receipt Not Issued'}
+                      </span>
                     </div>
 
-                    <Link to={`/contributions/receipt/${don.donationId}`}>
-                      <Button variant="outline" size="sm" className="text-xs flex items-center gap-1.5">
-                        <FileText size={14} /> Receipt
+                    {don.status === 'success' ? (
+                      <Link to={`/contributions/receipt/${don.donationId}`}>
+                        <Button variant="outline" size="sm" className="text-xs flex items-center gap-1.5 shadow-sm">
+                          <FileText size={14} /> 80G Receipt
+                        </Button>
+                      </Link>
+                    ) : (
+                      <Button variant="outline" size="sm" disabled className="text-xs opacity-50 cursor-not-allowed">
+                        {don.status === 'failed' ? 'Payment Failed' : 'Pending'}
                       </Button>
-                    </Link>
+                    )}
                   </div>
                 </div>
               ))}

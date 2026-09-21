@@ -282,11 +282,39 @@ router.get('/receipt/:donationId', authenticate, async (req, res, next) => {
     const donation = await Donation.findOne({
       donationId: req.params.donationId,
       $or: [{ donor: req.user._id }, ...(req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN' ? [{}] : [])],
-    }).populate('campaign', 'title category beneficiary').populate('donor', 'firstName lastName email');
+    }).populate('campaign', 'title category beneficiary').populate('donor', 'firstName lastName email panNumber');
 
     if (!donation) throw new AppError('Receipt not found.', 404);
 
+    if (donation.status !== 'success') {
+      throw new AppError('Receipt cannot be generated. Official 80G tax exemption certificates are only issued for successfully settled donations.', 400);
+    }
+
     return res.json({ success: true, data: donation });
+  } catch (err) { next(err); }
+});
+
+// GET /donations/receipt/:donationId/pdf (Direct PDF Download)
+router.get('/receipt/:donationId/pdf', authenticate, async (req, res, next) => {
+  try {
+    const donation = await Donation.findOne({
+      donationId: req.params.donationId,
+      $or: [{ donor: req.user._id }, ...(req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN' ? [{}] : [])],
+    }).populate('campaign', 'title category beneficiary').populate('donor', 'firstName lastName email panNumber');
+
+    if (!donation) throw new AppError('Receipt not found.', 404);
+
+    if (donation.status !== 'success') {
+      throw new AppError('Official 80G tax exemption certificates can only be downloaded for completed donations.', 400);
+    }
+
+    const { generateDonationReceiptPDF } = require('../services/receiptPdfService');
+    const filename = `TCET_80G_Donation_Certificate_${(donation.receiptNumber || donation.donationId).replace(/[/\\?%*:|"<>]/g, '_')}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    await generateDonationReceiptPDF(donation, res);
   } catch (err) { next(err); }
 });
 

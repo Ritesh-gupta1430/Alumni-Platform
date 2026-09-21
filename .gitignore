@@ -81,3 +81,8 @@ Thumbs.db
 *.sln
 *.sw?
 *.bak
+*.zip
+AlumNetra_Report_Images/
+AlumNetra_Section_5_Results_Images/
+AlumNetra_Report_*.zip
+

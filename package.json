@@ -21,5 +21,8 @@
     "tailwind"
   ],
   "author": "AlumNetra Institutional Engineering Team",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "puppeteer": "^25.11.0"
+  }
 }
