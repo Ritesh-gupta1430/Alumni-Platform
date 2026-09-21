@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Printer,
   ChevronLeft,
   Download,
   AlertTriangle,
@@ -305,19 +304,10 @@ export default function DonationReceiptPage() {
             disabled={downloading}
             variant="primary"
             size="sm"
-            className="flex items-center gap-2 shadow-lg shadow-emerald-500/20 bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="flex items-center gap-2 shadow-lg shadow-blue-500/20 bg-blue-600 hover:bg-blue-700 text-white"
           >
             {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
             {downloading ? 'Generating PDF...' : 'Download Official PDF'}
-          </Button>
-
-          <Button
-            onClick={handlePrint}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2"
-          >
-            <Printer size={16} /> Print / Save as PDF
           </Button>
         </div>
       </div>
