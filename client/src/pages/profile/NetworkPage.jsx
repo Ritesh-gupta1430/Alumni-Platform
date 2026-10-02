@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Users,
@@ -16,7 +16,9 @@ import {
   Check,
   X,
   Globe2,
-  Trash2
+  Trash2,
+  BarChart3,
+  PieChart
 } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
 import { usersAPI, connectionsAPI, messagesAPI } from '../../services/api';
@@ -27,13 +29,22 @@ import { Button } from '../../components/ui/Button';
 import { Input, Select, Textarea } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { DEPARTMENTS, YEARS } from '../../lib/utils';
+import AlumniAnalyticsDashboard from '../../components/network/AlumniAnalyticsDashboard';
 
 export default function NetworkPage() {
   const { user: currentUser } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState('directory'); // 'directory' | 'connections' | 'pending' | 'batchmates' | 'map'
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(tabParam || 'directory'); // 'directory' | 'connections' | 'pending' | 'batchmates' | 'map'
+
+  useEffect(() => {
+    if (tabParam && ['directory', 'connections', 'pending', 'batchmates', 'map'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
 
   // Directory State
   const [searchQuery, setSearchQuery] = useState('');
@@ -146,7 +157,7 @@ export default function NetworkPage() {
     else if (activeTab === 'connections') fetchConnections();
     else if (activeTab === 'pending') fetchPending();
     else if (activeTab === 'batchmates') fetchBatchmates();
-    else if (activeTab === 'map') fetchAlumniMap();
+    else if (activeTab === 'analytics' || activeTab === 'map') fetchAlumniMap();
   }, [activeTab, fetchDirectory, fetchConnections, fetchPending, fetchBatchmates, fetchAlumniMap]);
 
   // Send Connection Request
@@ -236,7 +247,7 @@ export default function NetworkPage() {
     { id: 'connections', label: `My Connections (${connections.length})`, icon: UserCheck },
     { id: 'pending', label: `Pending Requests (${pendingRequests.length})`, icon: Clock, badge: pendingRequests.length },
     { id: 'batchmates', label: 'Batchmates', icon: GraduationCap },
-    { id: 'map', label: 'Alumni World Map', icon: Globe2 },
+    { id: 'analytics', label: 'Alumni Global Analytics', icon: BarChart3 },
   ];
 
   return (
@@ -716,50 +727,10 @@ export default function NetworkPage() {
         </div>
       )}
 
-      {/* ===== TAB 5: ALUMNI GLOBAL DISTRIBUTION ===== */}
-      {activeTab === 'map' && (
+      {/* ===== TAB 5: ALUMNI GLOBAL ANALYTICS ===== */}
+      {(activeTab === 'analytics' || activeTab === 'map') && (
         <div className="space-y-6">
-          <div className="card p-6 space-y-4">
-            <h2 className="text-base font-bold text-[var(--color-text-primary)] flex items-center gap-2">
-              <Globe2 size={20} className="text-blue-400" />
-              Alumni Geo-Distribution
-            </h2>
-            <p className="text-xs text-[var(--color-text-muted)]">
-              Cities and regions around the world where TCET alumni are currently based.
-            </p>
-
-            {mapLoading ? (
-              <div className="p-12 text-center text-sm text-[var(--color-text-muted)] animate-pulse">
-                Loading geographical data...
-              </div>
-            ) : alumniMap.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
-                {alumniMap.map((loc, i) => (
-                  <div
-                    key={i}
-                    className="p-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-surface-border)] flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-lg bg-blue-500/10 text-blue-400">
-                        <MapPin size={18} />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-sm text-[var(--color-text-primary)]">{loc.city}</h4>
-                        <p className="text-xs text-[var(--color-text-muted)]">{loc.country}</p>
-                      </div>
-                    </div>
-                    <span className="font-mono text-sm font-bold text-blue-400">
-                      {loc.count} {loc.count === 1 ? 'Alum' : 'Alumni'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-8 text-center text-xs text-[var(--color-text-muted)]">
-                No location data registered for alumni yet.
-              </div>
-            )}
-          </div>
+          <AlumniAnalyticsDashboard data={alumniMap} loading={mapLoading} />
         </div>
       )}
 

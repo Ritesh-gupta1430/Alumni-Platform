@@ -21,11 +21,85 @@ async function register(req, res, next) {
       collegeEmail, dateOfBirth, gender,
     } = req.body;
 
+    if (!firstName || !lastName || !email || !password) {
+      throw new AppError('First name, last name, email, and password are required.', 400, 'MISSING_FIELDS');
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedCollegeEmail = collegeEmail ? collegeEmail.toLowerCase().trim() : undefined;
+
     // Check email uniqueness
-    const existing = await User.findOne({ $or: [{ email }, ...(collegeEmail ? [{ collegeEmail }] : [])] });
+    const existing = await User.findOne({
+      $or: [
+        { email: normalizedEmail },
+        ...(normalizedCollegeEmail ? [{ collegeEmail: normalizedCollegeEmail }] : []),
+      ],
+    });
+
+    const isDev = process.env.NODE_ENV === 'development';
+    const otp = authService.generateOTP(6);
+    const otpExpiry = new Date(Date.now() + (parseInt(process.env.OTP_EXPIRY_MINUTES, 10) || 10) * 60 * 1000);
+    const [passwordHash, otpHash] = await Promise.all([
+      authService.hashPassword(password),
+      authService.hashOTP(otp),
+    ]);
+
+    // If an existing user was never verified and stuck in pending_email, update their record & resend OTP
     if (existing) {
-      if (existing.email === email) throw new AppError('An account with this email already exists.', 409, 'DUPLICATE_EMAIL');
-      if (existing.collegeEmail === collegeEmail) throw new AppError('An account with this college email already exists.', 409, 'DUPLICATE_COLLEGE_EMAIL');
+      if (existing.email === normalizedEmail && !existing.emailVerified && existing.accountStatus === 'pending_email') {
+        existing.firstName = firstName.trim();
+        existing.lastName = lastName.trim();
+        existing.passwordHash = passwordHash;
+        existing.phone = phone || existing.phone;
+        existing.role = role || existing.role || 'STUDENT';
+        existing.department = department || existing.department;
+        existing.course = course || existing.course;
+        existing.admissionYear = admissionYear || existing.admissionYear;
+        existing.graduationYear = graduationYear || existing.graduationYear;
+        existing.currentYear = currentYear || existing.currentYear;
+        existing.currentSemester = currentSemester || existing.currentSemester;
+        existing.rollNumber = rollNumber || existing.rollNumber;
+        existing.division = division || existing.division;
+        existing.prnNumber = prnNumber || existing.prnNumber;
+        existing.collegeEmail = normalizedCollegeEmail || existing.collegeEmail;
+        existing.dateOfBirth = dateOfBirth || existing.dateOfBirth;
+        existing.gender = gender || existing.gender;
+        existing.emailOTP = otpHash;
+        existing.emailOTPExpiry = otpExpiry;
+        existing.emailOTPAttempts = 0;
+        await existing.save();
+
+        // Send OTP email in background
+        emailService.sendOTPEmail({
+          to: existing.email,
+          name: existing.firstName,
+          otp,
+          purpose: 'email_verification',
+        }).catch((mailErr) => {
+          console.error('⚠️ [Register] Async email delivery error:', mailErr.message);
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: 'Account details updated. Please check your email for the new OTP.',
+          data: {
+            userId: existing._id,
+            email: existing.email,
+            firstName: existing.firstName,
+            lastName: existing.lastName,
+            role: existing.role,
+            accountStatus: existing.accountStatus,
+            devOtp: isDev ? otp : undefined,
+          },
+        });
+      }
+
+      if (existing.email === normalizedEmail) {
+        throw new AppError('An account with this email already exists. Please sign in.', 409, 'DUPLICATE_EMAIL');
+      }
+      if (normalizedCollegeEmail && existing.collegeEmail === normalizedCollegeEmail) {
+        throw new AppError('An account with this college email already exists.', 409, 'DUPLICATE_COLLEGE_EMAIL');
+      }
     }
 
     // Validate alumni graduation year
@@ -40,13 +114,11 @@ async function register(req, res, next) {
       if (dupRoll) throw new AppError('This roll number is already registered for the given department.', 409, 'DUPLICATE_ROLL');
     }
 
-    const passwordHash = await authService.hashPassword(password);
-
     const user = await User.create({
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      email: email.toLowerCase().trim(),
-      collegeEmail: collegeEmail?.toLowerCase().trim(),
+      email: normalizedEmail,
+      collegeEmail: normalizedCollegeEmail,
       passwordHash,
       phone,
       role: role || 'STUDENT',
@@ -62,41 +134,39 @@ async function register(req, res, next) {
       dateOfBirth,
       gender,
       accountStatus: 'pending_email',
+      emailVerified: false,
+      emailOTP: otpHash,
+      emailOTPExpiry: otpExpiry,
+      emailOTPAttempts: 0,
     });
 
-    // Create empty profile
-    await Profile.create({ user: user._id });
+    // Create empty profile & audit log asynchronously without blocking response
+    Promise.all([
+      Profile.create({ user: user._id }),
+      authService.createAuditLog({
+        actor: user._id,
+        actorEmail: user.email,
+        actorRole: user.role,
+        action: 'user_registered',
+        targetType: 'User',
+        targetId: user._id,
+        targetDisplay: `${user.firstName} ${user.lastName} (${user.email})`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        severity: 'low',
+      }),
+    ]).catch((bgErr) => {
+      console.error('⚠️ [Register] Background task error:', bgErr.message);
+    });
 
-    // Generate OTP
-    const otp = authService.generateOTP(6);
-    const otpHash = await authService.hashOTP(otp);
-    const otpExpiry = new Date(Date.now() + (parseInt(process.env.OTP_EXPIRY_MINUTES, 10) || 10) * 60 * 1000);
-
-    user.emailOTP = otpHash;
-    user.emailOTPExpiry = otpExpiry;
-    user.emailOTPAttempts = 0;
-    await user.save();
-
-    // Send OTP email
-    await emailService.sendOTPEmail({
+    // Send OTP email in background
+    emailService.sendOTPEmail({
       to: user.email,
       name: user.firstName,
       otp,
       purpose: 'email_verification',
-    });
-
-    // Audit log
-    await authService.createAuditLog({
-      actor: user._id,
-      actorEmail: user.email,
-      actorRole: user.role,
-      action: 'user_registered',
-      targetType: 'User',
-      targetId: user._id,
-      targetDisplay: `${user.firstName} ${user.lastName} (${user.email})`,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-      severity: 'low',
+    }).catch((mailErr) => {
+      console.error('⚠️ [Register] Async email delivery error:', mailErr.message);
     });
 
     return res.status(201).json({
@@ -109,6 +179,7 @@ async function register(req, res, next) {
         lastName: user.lastName,
         role: user.role,
         accountStatus: user.accountStatus,
+        devOtp: isDev ? otp : undefined,
       },
     });
   } catch (err) {
@@ -121,9 +192,41 @@ async function verifyEmail(req, res, next) {
   try {
     const { email, otp } = req.body;
 
-    const user = await User.findOne({ email: email.toLowerCase() }).select('+emailOTP +emailOTPExpiry +emailOTPAttempts');
+    if (!email || !otp) {
+      throw new AppError('Email and OTP verification code are required.', 400, 'INVALID_INPUT');
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const cleanOtp = String(otp).trim();
+
+    const user = await User.findOne({ email: normalizedEmail }).select('+emailOTP +emailOTPExpiry +emailOTPAttempts +refreshTokens');
     if (!user) throw new AppError('No account found with this email.', 404, 'USER_NOT_FOUND');
-    if (user.emailVerified) throw new AppError('Email is already verified.', 400, 'ALREADY_VERIFIED');
+    if (user.emailVerified) {
+      // User is already verified, allow creating session or notify
+      const { accessToken, refreshToken } = await authService.createSession(user._id, {
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+      res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS);
+      return res.json({
+        success: true,
+        message: 'Email is already verified.',
+        data: {
+          accessToken,
+          user: {
+            _id: user._id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            role: user.role,
+            accountStatus: user.accountStatus,
+            verificationStatus: user.verificationStatus,
+            verificationBadge: user.verificationBadge,
+            profilePhoto: user.profilePhoto,
+          },
+        },
+      });
+    }
 
     const maxAttempts = parseInt(process.env.OTP_MAX_ATTEMPTS, 10) || 5;
     if (user.emailOTPAttempts >= maxAttempts) {
@@ -134,13 +237,13 @@ async function verifyEmail(req, res, next) {
       throw new AppError('OTP has expired. Please request a new one.', 410, 'OTP_EXPIRED');
     }
 
-    const valid = await authService.compareOTP(otp, user.emailOTP);
+    const valid = await authService.compareOTP(cleanOtp, user.emailOTP);
     if (!valid) {
-      user.emailOTPAttempts += 1;
+      user.emailOTPAttempts = (user.emailOTPAttempts || 0) + 1;
       await user.save();
       const remaining = maxAttempts - user.emailOTPAttempts;
       throw new AppError(
-        `Invalid OTP. ${remaining > 0 ? `${remaining} attempt(s) remaining.` : 'No attempts remaining.'}`,
+        `Invalid OTP. ${remaining > 0 ? `${remaining} attempt(s) remaining.` : 'No attempts remaining. Please request a new OTP.'}`,
         400, 'INVALID_OTP'
       );
     }
@@ -164,10 +267,32 @@ async function verifyEmail(req, res, next) {
       severity: 'low',
     });
 
+    // Create active session so user is immediately logged in
+    const { accessToken, refreshToken } = await authService.createSession(user._id, {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS);
+
     return res.json({
       success: true,
-      message: 'Email verified successfully. Please submit your verification documents.',
-      data: { accountStatus: user.accountStatus },
+      message: 'Email verified successfully! Welcome to AlumNetra.',
+      data: {
+        accessToken,
+        accountStatus: user.accountStatus,
+        user: {
+          _id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+          accountStatus: user.accountStatus,
+          verificationStatus: user.verificationStatus,
+          verificationBadge: user.verificationBadge,
+          profilePhoto: user.profilePhoto,
+        },
+      },
     });
   } catch (err) {
     next(err);
@@ -178,12 +303,16 @@ async function verifyEmail(req, res, next) {
 async function resendOTP(req, res, next) {
   try {
     const { email, purpose = 'email_verification' } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!email) throw new AppError('Email is required.', 400, 'INVALID_INPUT');
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) throw new AppError('No account found with this email.', 404, 'USER_NOT_FOUND');
     if (purpose === 'email_verification' && user.emailVerified) {
-      throw new AppError('Email is already verified.', 400, 'ALREADY_VERIFIED');
+      throw new AppError('Email is already verified. You can log in directly.', 400, 'ALREADY_VERIFIED');
     }
 
+    const isDev = process.env.NODE_ENV === 'development';
     const otp = authService.generateOTP(6);
     const otpHash = await authService.hashOTP(otp);
     const otpExpiry = new Date(Date.now() + (parseInt(process.env.OTP_EXPIRY_MINUTES, 10) || 10) * 60 * 1000);
@@ -193,16 +322,22 @@ async function resendOTP(req, res, next) {
     user.emailOTPAttempts = 0;
     await user.save();
 
-    await emailService.sendOTPEmail({
+    // Send OTP email in background
+    emailService.sendOTPEmail({
       to: user.email,
       name: user.firstName,
       otp,
       purpose,
+    }).catch((mailErr) => {
+      console.error('⚠️ [ResendOTP] Async email delivery error:', mailErr.message);
     });
 
     return res.json({
       success: true,
       message: 'A new OTP has been sent to your email.',
+      data: {
+        devOtp: isDev ? otp : undefined,
+      },
     });
   } catch (err) {
     next(err);
@@ -375,16 +510,15 @@ async function forgotPassword(req, res, next) {
     user.emailOTPAttempts = 0;
     await user.save();
 
-    try {
-      await emailService.sendOTPEmail({
-        to: user.email,
-        name: user.firstName,
-        otp,
-        purpose: 'password_reset',
-      });
-    } catch (emailErr) {
-      console.error('⚠️ [ForgotPassword] Email delivery warning:', emailErr.message);
-    }
+    // Send OTP email in background
+    emailService.sendOTPEmail({
+      to: user.email,
+      name: user.firstName,
+      otp,
+      purpose: 'password_reset',
+    }).catch((emailErr) => {
+      console.error('⚠️ [ForgotPassword] Async email delivery error:', emailErr.message);
+    });
 
     return res.json({
       success: true,

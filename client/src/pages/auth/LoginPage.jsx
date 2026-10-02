@@ -40,7 +40,13 @@ export default function LoginPage() {
         navigate('/dashboard');
       }
     } catch (err) {
-      toast.error(getErrorMessage(err));
+      const isUnverified = err.response?.data?.code === 'EMAIL_NOT_VERIFIED' || err.message?.toLowerCase().includes('verify');
+      if (isUnverified) {
+        toast.error('Please verify your email address to continue.', { title: 'Verification Required' });
+        navigate('/verify-email', { state: { email: data.email } });
+      } else {
+        toast.error(getErrorMessage(err));
+      }
     } finally {
       setLoading(false);
     }

@@ -123,6 +123,56 @@ function getFileUrl(publicId, provider = null) {
   return publicId; // Cloudinary returns full URL
 }
 
+function getPrivateDownloadUrl(publicIdOrUrl, format = 'pdf') {
+  if (process.env.STORAGE_PROVIDER === 'cloudinary') {
+    try {
+      const cloudinary = require('cloudinary').v2;
+      cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+      });
+      let cleanId = publicIdOrUrl;
+      if (cleanId.includes('cloudinary.com')) {
+        const match = cleanId.match(/\/upload\/(?:v\d+\/)?([^\.]+)/);
+        if (match) cleanId = match[1];
+      }
+      cleanId = cleanId.replace(/\.[^/.]+$/, '');
+      return cloudinary.utils.private_download_url(cleanId, format, {
+        resource_type: 'image',
+        type: 'upload',
+        expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 3600, // 7 days valid
+      });
+    } catch (e) {
+      console.warn('⚠️  Failed to generate download URL:', e.message);
+    }
+  }
+  return publicIdOrUrl;
+}
+
+function enrichDocumentUrls(doc) {
+  if (!doc) return doc;
+  const docObj = doc.toObject ? doc.toObject() : { ...doc };
+  const isPdf = docObj.mimeType === 'application/pdf' || (docObj.url && docObj.url.toLowerCase().includes('.pdf'));
+
+  if (docObj.url && docObj.url.includes('cloudinary.com')) {
+    if (isPdf) {
+      docObj.previewUrl = docObj.url.replace('/upload/', '/upload/pg_1,w_1400,c_limit,q_auto:best/').replace(/\.pdf$/i, '.jpg');
+      docObj.thumbnailUrl = docObj.url.replace('/upload/', '/upload/pg_1,w_400,h_260,c_fill,q_auto/').replace(/\.pdf$/i, '.jpg');
+      docObj.downloadUrl = getPrivateDownloadUrl(docObj.url, 'pdf');
+    } else {
+      docObj.previewUrl = docObj.url.replace('/upload/', '/upload/w_1400,c_limit,q_auto:best/');
+      docObj.thumbnailUrl = docObj.url.replace('/upload/', '/upload/w_400,h_260,c_fill,q_auto/');
+      docObj.downloadUrl = docObj.url;
+    }
+  } else {
+    docObj.previewUrl = docObj.url;
+    docObj.thumbnailUrl = docObj.url;
+    docObj.downloadUrl = docObj.url;
+  }
+  return docObj;
+}
+
 // Multer memory storage configuration
 const multer = require('multer');
 
@@ -158,6 +208,8 @@ module.exports = {
   uploadFile,
   deleteFile,
   getFileUrl,
+  getPrivateDownloadUrl,
+  enrichDocumentUrls,
   upload,
   imageUpload,
   ensureDir,

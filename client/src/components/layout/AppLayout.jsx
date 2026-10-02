@@ -232,6 +232,18 @@ export function Sidebar({ mobileOpen, onClose }) {
         />
         <NavItem to="/messages" icon={MessageCircle} label="Messages" onClick={onClose} />
         <NavItem to="/notifications" icon={Bell} label="Notifications" badge={unreadCount} onClick={onClose} />
+        <NavItem
+          to="/settings/verification"
+          icon={Shield}
+          label={
+            user?.verificationStatus === 'approved'
+              ? 'Verified Status ✓'
+              : user?.verificationStatus === 'pending' || user?.verificationStatus === 'under_review'
+              ? 'Review Status ⏳'
+              : 'ID Verification'
+          }
+          onClick={onClose}
+        />
 
         {/* RECRUITER SPECIFIC NAVIGATION */}
         {isRecruiterRole && (

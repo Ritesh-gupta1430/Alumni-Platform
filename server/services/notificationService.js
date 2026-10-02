@@ -90,7 +90,8 @@ async function notifyConnectionRequest(recipient, sender) {
     priority: 'medium',
     title: 'New connection request',
     message: `${sender.firstName} ${sender.lastName} wants to connect with you.`,
-    link: `/network/requests`,
+    link: `/network?tab=pending`,
+    data: { senderId: sender._id },
   });
 }
 
@@ -103,6 +104,7 @@ async function notifyConnectionAccepted(recipient, sender) {
     title: 'Connection accepted',
     message: `${sender.firstName} ${sender.lastName} accepted your connection request.`,
     link: `/profile/${sender._id}`,
+    data: { senderId: sender._id },
   });
 }
 
@@ -114,7 +116,8 @@ async function notifyMentorshipRequest(mentor, student) {
     priority: 'high',
     title: 'New mentorship request',
     message: `${student.firstName} ${student.lastName} has requested you as a mentor.`,
-    link: `/mentorship/requests`,
+    link: `/mentorship?tab=my-requests`,
+    data: { studentId: student._id },
   });
 }
 
@@ -126,25 +129,27 @@ async function notifyMentorshipAccepted(student, mentor) {
     priority: 'high',
     title: 'Mentorship request accepted',
     message: `${mentor.firstName} ${mentor.lastName} accepted your mentorship request.`,
-    link: `/mentorship`,
+    link: `/mentorship?tab=active`,
+    data: { mentorId: mentor._id },
   });
 }
 
 async function notifyVerificationUpdate(userId, status, reason) {
   const messages = {
-    approved: { title: 'Account verified!', msg: 'Your identity has been verified. Welcome to AlumNetra!', priority: 'high' },
-    rejected: { title: 'Verification update', msg: `Your verification was not approved. ${reason || ''}`, priority: 'high' },
-    resubmission_required: { title: 'Action required', msg: 'Your verification needs additional documents.', priority: 'high' },
+    approved: { title: 'Account verified! 🎓', msg: 'Your identity has been verified. You now have full access to AlumNetra network, jobs, and mentorship.', priority: 'high' },
+    rejected: { title: 'Verification update', msg: `Your verification was not approved. ${reason ? `Reason: ${reason}` : 'Please submit valid institutional documents.'}`, priority: 'high' },
+    resubmission_required: { title: 'Action required: Verification', msg: 'Your verification requires document updates or clearer scans.', priority: 'high' },
   };
   const info = messages[status] || { title: 'Account update', msg: 'Your account status has changed.', priority: 'medium' };
 
   return createNotification({
     recipient: userId,
-    type: `verification_${status}`.replace('verification_approved', 'verification_approved').replace('verification_rejected', 'verification_rejected'),
+    type: `verification_${status}`,
     priority: info.priority,
     title: info.title,
     message: info.msg,
-    link: '/dashboard',
+    link: '/settings/verification',
+    data: { status, reason },
   });
 }
 
@@ -175,6 +180,7 @@ async function notifyApplicationStatusChange(applicant, job, newStatus) {
     title: statusLabels[newStatus] || 'Application update',
     message: `Your application for "${job.title}" at ${job.companyName} has been updated to: ${newStatus}.`,
     link: `/applications`,
+    data: { jobId: job._id, status: newStatus },
   });
 }
 

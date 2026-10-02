@@ -36,9 +36,23 @@ async function getTransporter() {
   }
 
   // SMTP (e.g. Gmail, SendGrid, custom SMTP)
-  const port = parseInt(process.env.SMTP_PORT, 10) || 587;
-  const isGmail = (process.env.SMTP_HOST || '').includes('gmail.com');
+  const isGmail = (process.env.SMTP_HOST || '').includes('gmail.com') || (process.env.SMTP_USER || '').includes('@gmail.com');
 
+  if (isGmail) {
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+      connectionTimeout: 4000,
+      greetingTimeout: 4000,
+      socketTimeout: 4000,
+    });
+    return transporter;
+  }
+
+  const port = parseInt(process.env.SMTP_PORT, 10) || 587;
   const transportOptions = {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port,
@@ -47,17 +61,13 @@ async function getTransporter() {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 5000,
+    connectionTimeout: 4000,
+    greetingTimeout: 4000,
+    socketTimeout: 4000,
     tls: {
       rejectUnauthorized: false,
     },
   };
-
-  if (isGmail) {
-    transportOptions.service = 'gmail';
-  }
 
   transporter = nodemailer.createTransport(transportOptions);
   return transporter;

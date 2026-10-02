@@ -21,16 +21,24 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const verifyLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 30,
+  message: { success: false, message: 'Too many verification attempts. Please wait before trying again.', code: 'RATE_LIMITED' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const otpLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 5,
+  max: 10,
   message: { success: false, message: 'Too many OTP requests. Please wait before requesting another.', code: 'RATE_LIMITED' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 router.post('/register', registrationLimiter, authController.register);
-router.post('/verify-email', otpLimiter, authController.verifyEmail);
+router.post('/verify-email', verifyLimiter, authController.verifyEmail);
 router.post('/resend-otp', otpLimiter, authController.resendOTP);
 router.post('/login', loginLimiter, authController.login);
 router.post('/refresh', authController.refreshToken);

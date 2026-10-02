@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Sparkles,
@@ -26,8 +26,16 @@ import { DEPARTMENTS, formatDate, timeAgo } from '../../lib/utils';
 export default function MentorshipPage() {
   const { user, profile } = useAuth();
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState('explore'); // 'explore' | 'my-requests' | 'active'
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(tabParam || 'explore'); // 'explore' | 'my-requests' | 'active'
+
+  useEffect(() => {
+    if (tabParam && ['explore', 'my-requests', 'active'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
   const [mentors, setMentors] = useState([]);
   const [loadingMentors, setLoadingMentors] = useState(true);
 

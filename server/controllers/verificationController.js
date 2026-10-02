@@ -130,12 +130,18 @@ async function getVerificationStatus(req, res, next) {
       .sort({ submissionNumber: -1 })
       .populate('reviewedBy', 'firstName lastName');
 
+    let requestData = request;
+    if (request && request.documents) {
+      requestData = request.toObject();
+      requestData.documents = requestData.documents.map(storageService.enrichDocumentUrls);
+    }
+
     return res.json({
       success: true,
       data: {
         verificationStatus: req.user.verificationStatus,
         verificationBadge: req.user.verificationBadge,
-        request: request || null,
+        request: requestData || null,
       },
     });
   } catch (err) {
@@ -172,6 +178,15 @@ async function listVerifications(req, res, next) {
       VerificationRequest.countDocuments(filter),
     ]);
 
+    // Enrich documents for admin preview
+    const enrichedResults = results.map((r) => {
+      const obj = r.toObject();
+      if (obj.documents && Array.isArray(obj.documents)) {
+        obj.documents = obj.documents.map(storageService.enrichDocumentUrls);
+      }
+      return obj;
+    });
+
     // Stats
     const stats = await VerificationRequest.aggregate([
       { $group: { _id: '$status', count: { $sum: 1 } } },
@@ -181,7 +196,7 @@ async function listVerifications(req, res, next) {
     return res.json({
       success: true,
       data: {
-        requests: results,
+        requests: enrichedResults,
         total,
         page: parseInt(page),
         pages: Math.ceil(total / limit),
@@ -203,7 +218,12 @@ async function getVerificationDetail(req, res, next) {
 
     if (!request) throw new AppError('Verification request not found.', 404, 'NOT_FOUND');
 
-    return res.json({ success: true, data: request });
+    const obj = request.toObject();
+    if (obj.documents && Array.isArray(obj.documents)) {
+      obj.documents = obj.documents.map(storageService.enrichDocumentUrls);
+    }
+
+    return res.json({ success: true, data: obj });
   } catch (err) {
     next(err);
   }

@@ -9,7 +9,7 @@ const User = require('../models/User');
 const LoginHistory = require('../models/LoginHistory');
 const AuditLog = require('../models/AuditLog');
 
-const SALT_ROUNDS = 12;
+const SALT_ROUNDS = 10;
 
 // ===== Password =====
 

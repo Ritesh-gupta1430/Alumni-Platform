@@ -132,9 +132,14 @@ export default function App() {
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/settings/verification" element={<VerificationPage />} />
+              <Route path="/verification" element={<VerificationPage />} />
+              <Route path="/verify" element={<VerificationPage />} />
 
               {/* Verified Only Features */}
               <Route path="/network" element={<VerifiedFeature name="Alumni & Student Directory"><NetworkPage /></VerifiedFeature>} />
+              <Route path="/network/requests" element={<Navigate to="/network?tab=pending" replace />} />
+              <Route path="/network/pending" element={<Navigate to="/network?tab=pending" replace />} />
+              <Route path="/network/connections" element={<Navigate to="/network?tab=connections" replace />} />
               <Route path="/messages" element={<VerifiedFeature name="Direct Messaging"><MessagesPage /></VerifiedFeature>} />
 
               {/* Career & Referrals */}
@@ -146,6 +151,7 @@ export default function App() {
 
               {/* Mentorship */}
               <Route path="/mentorship" element={<VerifiedFeature name="Mentorship Hub"><MentorshipPage /></VerifiedFeature>} />
+              <Route path="/mentorship/requests" element={<Navigate to="/mentorship?tab=my-requests" replace />} />
               <Route path="/mentorship/mentor/:mentorId" element={<VerifiedFeature name="Mentor Profile"><MentorProfilePage /></VerifiedFeature>} />
               <Route path="/mentorship/mentor" element={<VerifiedFeature name="Mentor Dashboard"><MentorDashboardPage /></VerifiedFeature>} />
 
@@ -159,10 +165,12 @@ export default function App() {
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/stories" element={<StoriesPage />} />
 
-              {/* Contributions */}
+              {/* Contributions & Campaigns */}
               <Route path="/contributions" element={<VerifiedFeature name="Institutional Giving"><ContributionsPage /></VerifiedFeature>} />
               <Route path="/contributions/:id" element={<VerifiedFeature name="Campaign Details"><CampaignDetailPage /></VerifiedFeature>} />
               <Route path="/contributions/receipt/:donationId" element={<DonationReceiptPage />} />
+              <Route path="/campaigns" element={<Navigate to="/contributions" replace />} />
+              <Route path="/campaigns/:id" element={<Navigate to="/contributions" replace />} />
 
               {/* AI Tools */}
               <Route path="/ai" element={<VerifiedFeature name="AI Career Tools"><AIToolsPage /></VerifiedFeature>} />

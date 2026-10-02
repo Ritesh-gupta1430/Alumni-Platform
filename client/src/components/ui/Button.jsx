@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { cn } from '../../lib/utils';
 
 export function Button({
@@ -7,6 +8,8 @@ export function Button({
   loading = false,
   className = '',
   disabled,
+  as: Component,
+  to,
   ...props
 }) {
   const variants = {
@@ -26,9 +29,35 @@ export function Button({
     xl: 'btn-xl',
   };
 
+  const buttonClasses = cn('btn', variants[variant], sizes[size], className);
+
+  if (to || Component === Link) {
+    return (
+      <Link
+        to={to || '#'}
+        className={buttonClasses}
+        {...props}
+      >
+        {children}
+      </Link>
+    );
+  }
+
+  if (Component) {
+    const CustomComponent = Component;
+    return (
+      <CustomComponent
+        className={buttonClasses}
+        {...props}
+      >
+        {children}
+      </CustomComponent>
+    );
+  }
+
   return (
     <button
-      className={cn('btn', variants[variant], sizes[size], className)}
+      className={buttonClasses}
       disabled={disabled || loading}
       {...props}
     >

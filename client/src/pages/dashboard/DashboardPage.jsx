@@ -247,11 +247,50 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {!isVerified && user?.verificationStatus !== 'pending' && !isRecruiter && (
+        {/* Verification Status Banner */}
+        {isVerified ? (
+          <div className="glass p-4 rounded-xl border-l-4 border-emerald-500 max-w-sm flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
+              <Check size={20} />
+            </div>
+            <div>
+              <h3 className="font-semibold text-emerald-400 text-sm flex items-center gap-1.5">
+                Verified TCET Member <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-mono font-bold">APPROVED</span>
+              </h3>
+              <p className="text-xs text-text-muted">
+                Full network access unlocked: Referrals, messaging & career hubs.
+              </p>
+            </div>
+          </div>
+        ) : user?.verificationStatus === 'pending' || user?.verificationStatus === 'under_review' ? (
+          <div className="glass p-4 rounded-xl border-l-4 border-blue-500 max-w-sm">
+            <h3 className="font-semibold text-blue-400 text-sm mb-1 flex items-center gap-1.5">
+              Verification Under Review ⏳
+            </h3>
+            <p className="text-xs text-text-muted mb-2.5">
+              Your documents have been submitted and are in the review queue by TCET administration.
+            </p>
+            <Button as={Link} to="/settings/verification" size="sm" variant="secondary">
+              Check Status
+            </Button>
+          </div>
+        ) : user?.verificationStatus === 'resubmission_required' ? (
+          <div className="glass p-4 rounded-xl border-l-4 border-orange-500 max-w-sm">
+            <h3 className="font-semibold text-orange-400 text-sm mb-1">
+              Resubmission Required ⚠️
+            </h3>
+            <p className="text-xs text-text-muted mb-2.5">
+              The administrator requested clearer document scans before approving.
+            </p>
+            <Button as={Link} to="/settings/verification" size="sm" variant="primary">
+              Resubmit Proof
+            </Button>
+          </div>
+        ) : !isRecruiter && (
           <div className="glass p-4 rounded-xl border-l-4 border-amber-500 max-w-sm">
-            <h3 className="font-semibold text-amber-500 mb-1">Verification Required</h3>
+            <h3 className="font-semibold text-amber-400 text-sm mb-1">Verification Required</h3>
             <p className="text-xs text-text-muted mb-3">
-              Unlock the verified TCET alumni badge, direct messaging, and referral requests.
+              Unlock the verified TCET badge, direct messaging, and referral requests.
             </p>
             <Button as={Link} to="/settings/verification" size="sm" variant="outline">
               Verify Identity
